@@ -1,0 +1,113 @@
+%PDF-1.4
+%‚„œ”
+
+
+% This is a minimal valid PDF 1.4 document.
+% It contains only one page and a simple text string.
+% It also has a lot of writespace to make easier for humans to read.
+% And, of course, JOAF PDF Rocks!
+
+
+% Document Catalog
+1 0 obj
+    <<
+        /Type     /Catalog
+        /Outlines 2 0 R
+        /Pages    3 0 R
+    >>
+endobj
+
+
+% Outline Dictionary
+2 0 obj
+    <<
+        /Type  /Outlines
+        /Count 0
+    >>
+endobj
+
+
+% Page Tree Node
+3 0 obj
+    <<
+        /Type  /Pages
+        /Kids  [4 0 R]
+        /Count 1
+    >>
+endobj
+
+
+% Page Object
+4 0 obj
+    <<
+        /Type       /Page
+        /MediaBox   [0 0 595 842]
+        /Contents   5 0 R
+        /Resources
+            <<
+                /ProcSet 6 0 R
+                /Font
+                    <<
+                        /F1 7 0 R
+                    >>
+            >>
+    >>
+endobj
+
+
+% Page Content Stream
+5 0 obj
+    <<
+        /Length  47
+    >>
+stream
+BT
+/F1 24 Tf
+100 700 Td
+(JOAF PDF Rocks) Tj
+ET
+
+endstream
+endobj
+
+
+% Procedure Set Array
+6 0 obj
+    [/PDF /Text]
+endobj
+
+
+% Type 1 Font Object (Not Embedded)
+7 0 obj
+    <<
+        /Type     /Font
+        /Subtype  /Type1
+        /Name     /F1
+        /BaseFont /Helvetica
+        /Encoding /MacRomanEncoding
+    >>
+endobj
+
+
+xref
+0 8
+0000000000 65535 f
+0000000220 00000 n
+0000000345 00000 n
+0000000439 00000 n
+0000000549 00000 n
+0000000862 00000 n
+0000001000 00000 n
+0000001056 00000 n
+
+
+trailer
+    <<
+        /Size 8
+        /Root 1 0 R
+    >>
+
+
+startxref
+1259
+%%EOF
