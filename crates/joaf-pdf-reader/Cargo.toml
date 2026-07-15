@@ -1,0 +1,12 @@
+[package]
+name = "joaf-pdf-reader"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+joaf-pdf-core = { version = "0.1.0", path = "../joaf-pdf-core" }
+joaf-pdf-dom = { version = "0.1.0", path = "../joaf-pdf-dom" }
+mmap-io = "1.0.0"
