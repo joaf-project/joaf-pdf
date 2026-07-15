@@ -1,0 +1,7 @@
+[package]
+name = "joaf-pdf-dom"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+joaf-pdf-core = { version = "0.1.0", path = "../joaf-pdf-core" }
