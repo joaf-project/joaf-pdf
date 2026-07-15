@@ -4,4 +4,8 @@ pub struct PdfCatalog {
     pub pages: Vec<PdfPage>,
 }
 
-impl PdfCatalog {}
+impl PdfCatalog {
+    pub fn new() -> Self {
+        Self { pages: Vec::new() }
+    }
+}
