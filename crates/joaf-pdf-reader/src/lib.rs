@@ -1,102 +1,144 @@
-use std::{
-    collections::HashMap,
-    io::{BufRead, Seek, SeekFrom},
-};
+use std::collections::BTreeMap;
 
 use joaf_pdf_core::{PdfDictionary, PdfError, XrefEntry};
-use joaf_pdf_dom::{PdfCatalog, PdfDocument};
+use joaf_pdf_dom::PdfDocument;
 
-pub struct PdfReader {}
+pub struct PdfReader<'a> {
+    pub document: PdfDocument,
+    bytes: &'a [u8],
+    pos: usize,
+    len: usize,
+}
 
-impl PdfReader {
-    pub fn read<T: BufRead + Seek>(reader: &mut T) -> Result<PdfDocument, PdfError> {
-        reader
-            .seek(SeekFrom::Start(0))
-            .map_err(PdfError::from_io_error)?;
+impl<'a> PdfReader<'a> {
+    pub fn new(bytes: &'a [u8]) -> Self {
+        Self {
+            document: PdfDocument::new(),
+            bytes,
+            pos: 0,
+            len: bytes.len(),
+        }
+    }
 
-        let mut line_buffer = String::new();
-        reader
-            .read_line(&mut line_buffer)
-            .map_err(PdfError::from_io_error)?;
+    pub fn read(&mut self) -> Result<(), PdfError> {
+        self.read_version()?;
+        self.read_trailer()?;
 
-        if !line_buffer.starts_with("%PDF-") {
+        Ok(())
+    }
+
+    fn discard_line(&mut self) -> Result<(), PdfError> {
+        loop {
+            if self.pos >= self.len {
+                return Err(PdfError::new("Unexpected EOF"));
+            }
+            let byte = self.bytes[self.pos];
+            self.pos += 1;
+
+            match byte {
+                b'\r' | b'\n' => break,
+                _ => continue,
+            }
+        }
+
+        Ok(())
+    }
+
+    fn discard_whitespace(&mut self) -> Result<(), PdfError> {
+        loop {
+            if self.pos >= self.len {
+                return Err(PdfError::new("Unexpected EOF"));
+            }
+            let byte = self.bytes[self.pos];
+            self.pos += 1;
+
+            match byte {
+                b' ' | b'\t' | b'\r' | b'\n' => continue,
+                b'%' => self.discard_line()?,
+                _ => {
+                    self.pos -= 1;
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn read_line(&mut self, buffer: &mut String) -> Result<(), PdfError> {
+        self.discard_whitespace()?;
+
+        buffer.clear();
+
+        loop {
+            if self.pos >= self.len {
+                return Err(PdfError::new("Unexpected EOF"));
+            }
+            let byte = self.bytes[self.pos];
+            self.pos += 1;
+
+            match byte {
+                b'\r' | b'\n' => break,
+                _ => buffer.push(byte as char),
+            }
+        }
+
+        Ok(())
+    }
+
+    fn read_version(&mut self) -> Result<(), PdfError> {
+        if !self.bytes.starts_with(b"%PDF-") {
             return Err(PdfError::new("No %PDF- header found."));
         }
 
         let mut version = String::new();
-        for c in line_buffer[5..].chars() {
-            match c {
-                '0'..='9' => version.push(c),
-                '.' => version.push(c),
+        for b in self.bytes[5..].iter() {
+            match b {
+                b'0'..=b'9' => version.push(*b as char),
+                b'.' => version.push(*b as char),
                 _ => break,
             }
         }
 
-        let file_len = reader
-            .seek(SeekFrom::End(0))
-            .map_err(PdfError::from_io_error)?;
+        self.document.version = version;
+        Ok(())
+    }
 
-        let chunk_size = std::cmp::min(1024, file_len as usize);
+    fn read_trailer(&mut self) -> Result<(), PdfError> {
+        const EOF_MARKER: &[u8] = b"%%EOF";
+        const START_XREF: &[u8] = b"startxref";
+        let mut line_buffer = String::new();
 
-        reader
-            .seek(SeekFrom::End(-(chunk_size as i64)))
-            .map_err(PdfError::from_io_error)?;
+        let position = self
+            .bytes
+            .windows(EOF_MARKER.len())
+            .rposition(|window| window == EOF_MARKER)
+            .ok_or(PdfError::new("No %%EOF marker found."))?;
 
-        let mut buffer: Vec<u8> = vec![0; chunk_size as usize];
-        reader
-            .read_exact(&mut buffer)
-            .map_err(PdfError::from_io_error)?;
+        let position = self.bytes[..position]
+            .windows(START_XREF.len())
+            .rposition(|window| window == START_XREF)
+            .ok_or(PdfError::new("No startxref found."))?;
 
-        let lines = buffer
-            .trim_ascii_end()
-            .rsplit(|x| *x == b'\n' || *x == b'\r')
-            .map(|x| {
-                str::from_utf8(x)
-                    .map(|s| s.trim())
-                    .map_err(PdfError::from_utf8_error)
-            })
-            .take_while(|x| match x {
-                Ok(s) => *s != "startxref",
-                Err(_) => true,
-            })
-            .collect::<Result<Vec<&str>, _>>()?;
+        self.pos = position + START_XREF.len();
+        self.read_line(&mut line_buffer)?;
 
-        if lines.len() != 2 || lines[0] != "%%EOF" {
-            return Err(PdfError::new("No %%EOF at end of file."));
-        }
-
-        let trailer_pos = lines[1]
+        let trailer_pos = line_buffer
+            .trim()
             .parse::<usize>()
             .map_err(|_| PdfError::new("Invalid trailer position."))?;
 
-        reader
-            .seek(SeekFrom::Start(trailer_pos as u64))
-            .map_err(PdfError::from_io_error)?;
+        self.pos = trailer_pos;
 
         let mut line_buffer = String::new();
 
-        let mut read_next_line = |buf: &mut String| -> Result<bool, PdfError> {
-            loop {
-                buf.clear();
-                let bytes_read = reader.read_line(buf).map_err(PdfError::from_io_error)?;
-
-                if bytes_read == 0 {
-                    return Ok(false);
-                }
-
-                if !buf.trim().is_empty() {
-                    return Ok(true);
-                }
-            }
-        };
-
-        if !read_next_line(&mut line_buffer)? || line_buffer.trim() != "xref" {
+        self.discard_whitespace()?;
+        self.read_line(&mut line_buffer)?;
+        if line_buffer.trim() != "xref" {
             return Err(PdfError::new("xref section missing."));
         }
 
-        if !read_next_line(&mut line_buffer)? {
-            return Err(PdfError::new("xref section header missing."));
-        }
+        self.read_line(&mut line_buffer)?;
 
         let xref_parts = line_buffer
             .split_whitespace()
@@ -111,12 +153,10 @@ impl PdfReader {
         let xref_start_obj = xref_parts[0];
         let xref_section_count = xref_parts[1];
 
-        let mut xref_table: HashMap<u32, XrefEntry> = HashMap::new();
+        let mut xref_table: BTreeMap<u32, XrefEntry> = BTreeMap::new();
 
         for xref_section_index in 0..xref_section_count {
-            if !read_next_line(&mut line_buffer)? {
-                return Err(PdfError::new("xref table extends beyond EOF."));
-            }
+            self.read_line(&mut line_buffer)?;
 
             let xref_section = line_buffer.split_whitespace().collect::<Vec<&str>>();
 
@@ -151,33 +191,58 @@ impl PdfReader {
             );
         }
 
-        let trailer = PdfDictionary::new();
-        let catalog = PdfCatalog { pages: Vec::new() };
+        self.read_line(&mut line_buffer)?;
+        if line_buffer.trim() != "trailer" {
+            return Err(PdfError::new("trailer section missing."));
+        }
 
-        Ok(PdfDocument {
-            version,
-            catalog,
-            trailer,
-            xref_table,
-        })
+        self.document.xref_table = xref_table;
+        Ok(())
+    }
+
+    fn read_dictionary(&mut self, buffer: &str) -> Result<PdfDictionary, PdfError> {
+        let mut dictionary = PdfDictionary::new();
+        Ok(dictionary)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mmap_io::MemoryMappedFile;
     use std::fs::File;
-    use std::io::BufReader;
+    use std::io::Read;
+
+    #[test]
+    fn load_sample_pdf14_mmap_test() -> Result<(), PdfError> {
+        let mmap = MemoryMappedFile::open_ro("../../tests/data/minimal_pdf_1_4.pdf")
+            .map_err(|err| PdfError::new(&format!("Failed to open memory mapped file: {}", err)))?;
+        let bytes = &mmap
+            .as_slice(0, mmap.len())
+            .map_err(|err| PdfError::new(&format!("Failed to open memory mapped file: {}", err)))?;
+        let mut pdf_reader = PdfReader::new(bytes);
+        pdf_reader.read()?;
+
+        println!("PDF version: {}", pdf_reader.document.version);
+        for (key, value) in pdf_reader.document.xref_table.iter() {
+            println!("Xref entry: {} = {:#?}", key, value);
+        }
+
+        Ok(())
+    }
 
     #[test]
     fn load_sample_pdf14_test() -> Result<(), PdfError> {
-        let file = File::open("../../tests/data/minimal_pdf_1_4.pdf")
-            .map_err(|err| PdfError::from_io_error(err))?;
-        let mut reader = BufReader::new(file);
-        let pdf = PdfReader::read(&mut reader)?;
+        let mut file =
+            File::open("../../tests/data/minimal_pdf_1_4.pdf").map_err(PdfError::from_io_error)?;
+        let mut buf: Vec<u8> = Vec::new();
+        file.read_to_end(&mut buf)
+            .map_err(PdfError::from_io_error)?;
+        let mut pdf_reader = PdfReader::new(&buf);
+        pdf_reader.read()?;
 
-        println!("PDF version: {}", pdf.version);
-        for (key, value) in pdf.xref_table.iter() {
+        println!("PDF version: {}", pdf_reader.document.version);
+        for (key, value) in pdf_reader.document.xref_table.iter() {
             println!("Xref entry: {} = {:#?}", key, value);
         }
 
