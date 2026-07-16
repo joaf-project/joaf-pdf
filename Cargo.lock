@@ -21,15 +21,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
-name = "dedent"
-version = "0.1.1"
+name = "hex"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8a3dee4e932355439992a45dc631b0979abf9c677958674bd94298bf9002870"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "indoc"
@@ -56,10 +51,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "joaf-pdf-parse"
+name = "joaf-pdf-parser"
 version = "0.1.0"
 dependencies = [
- "dedent",
+ "hex",
+ "indoc",
+ "joaf-pdf-core",
 ]
 
 [[package]]

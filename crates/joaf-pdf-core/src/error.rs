@@ -1,6 +1,6 @@
 use std::error::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PdfError {
     pub message: String,
 }
@@ -39,6 +39,12 @@ impl PdfError {
     pub fn missing_required_key(key: &str) -> Self {
         Self {
             message: format!("Missing Required Key: {}", key),
+        }
+    }
+
+    pub fn parser(message: &str, position: usize) -> Self {
+        Self {
+            message: format!("Parser error at position {}: {}", position, message),
         }
     }
 }

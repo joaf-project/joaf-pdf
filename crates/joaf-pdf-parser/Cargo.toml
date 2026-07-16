@@ -1,0 +1,9 @@
+[package]
+name = "joaf-pdf-parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hex = "0.4.3"
+indoc = "2.0.7"
+joaf-pdf-core = { version = "0.1.0", path = "../joaf-pdf-core" }
