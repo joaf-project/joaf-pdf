@@ -24,6 +24,18 @@ impl PdfError {
         }
     }
 
+    pub fn from_from_utf8_error(error: std::string::FromUtf8Error) -> Self {
+        Self {
+            message: format!("Utf8 Error: {}", error.to_string()),
+        }
+    }
+
+    pub fn unexpected_eof(pos: usize) -> Self {
+        Self {
+            message: format!("Unexpected EOF at position {}", pos),
+        }
+    }
+
     pub fn invalid_type(expected: &str) -> Self {
         Self {
             message: format!("Invalid Type: {}", expected),
