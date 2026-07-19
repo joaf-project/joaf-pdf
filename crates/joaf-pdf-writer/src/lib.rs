@@ -180,7 +180,7 @@ impl Writer {
 
         self.write(b"xref\n")?;
         self.write(format!("0 {}\n", xref_table.len() + 1).as_bytes())?;
-        self.write(b"0000000000 65535 f\n")?;
+        self.write(b"0000000000 65535 f\r\n")?;
         for (_, pos) in xref_table.iter().enumerate() {
             self.write(format!("{:010} {:05} n\n", pos, 0).as_bytes())?;
         }
@@ -218,11 +218,11 @@ impl Writer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::File;
+    use std::io::Cursor;
 
     #[test]
     fn write_sample_pdf14_test() -> Result<(), std::io::Error> {
-        let buffer = File::create("minimal_pdf_1_4.pdf")?;
+        let buffer = Cursor::<Vec<u8>>::new(Vec::new());
         let mut writer = Writer::new(Box::new(buffer));
         writer.write_sample_pdf14()?;
         Ok(())
