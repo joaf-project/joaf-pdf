@@ -1,10 +1,10 @@
 use crate::Page;
 
-pub struct Catalog<'a> {
-    pub pages: Vec<Page<'a>>,
+pub struct Catalog {
+    pub pages: Vec<Page>,
 }
 
-impl<'a> Catalog<'a> {
+impl Catalog {
     pub fn new() -> Self {
         Self { pages: Vec::new() }
     }

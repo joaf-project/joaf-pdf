@@ -1,6 +1,6 @@
 use joaf_pdf_core::{
     ObjectId, PDF_FALSE, PDF_NULL, PDF_TRUE, PdfArray, PdfDictionary, PdfError, PdfObject,
-    PdfStream, XrefEntry, XrefTable,
+    PdfStream, PdfString, XrefEntry, XrefTable,
 };
 
 use crate::lexer::{Lexer, Token};
@@ -67,14 +67,8 @@ impl<'a> PdfParser<'a> {
                 Ok(PdfObject::Integer(i))
             }
             Token::Real(r) => Ok(PdfObject::Real(r)),
-            Token::LiteralString(s) => {
-                let decoded = String::from_utf8(s.into()).map_err(PdfError::from)?;
-                Ok(PdfObject::String(decoded))
-            }
-            Token::HexString(s) => {
-                let decoded = String::from_utf8(s).map_err(PdfError::from)?;
-                Ok(PdfObject::String(decoded))
-            }
+            Token::LiteralString(s) => Ok(PdfObject::String(PdfString { bytes: s.to_vec() })),
+            Token::HexString(s) => Ok(PdfObject::String(PdfString { bytes: s })),
             Token::Keyword(kw) => match kw {
                 "true" => Ok(PDF_TRUE),
                 "false" => Ok(PDF_FALSE),
@@ -121,7 +115,7 @@ impl<'a> PdfParser<'a> {
         }
 
         if let PdfObject::Dictionary(trailer) = self.parse_object()? {
-            if let Some(size_obj) = trailer.dict.get("Size") {
+            if let Ok(size_obj) = trailer.get_required("Size") {
                 if let PdfObject::Integer(size) = size_obj {
                     if xref_table.len() != (*size) as usize {
                         return Err(PdfError::from("Invalid trailer."));
@@ -234,7 +228,7 @@ impl<'a> PdfParser<'a> {
                                 "stream" => {
                                     self.lexer.next_token()?; // discard "stream" token
                                     self.lexer.skip_optional_newline()?;
-                                    let len = dict.get("Length")?.to_integer()? as usize;
+                                    let len = dict.get_required("Length")?.to_integer()? as usize;
                                     let stream_data = self.lexer.consume_bytes(len)?;
                                     self.lexer.skip_optional_newline()?;
                                     if let Token::Keyword(kw) = self.lexer.require_token()? {

@@ -1,25 +1,23 @@
 use joaf_pdf_core::{PdfError, PdfObject, PdfObjectsMap};
-use joaf_pdf_dom::{Catalog, Document, Page, Trailer};
+use joaf_pdf_dom::{Document, Page};
 use joaf_pdf_parser::PdfParser;
 
 pub struct PdfMemoryReader<'a> {
     parser: PdfParser<'a>,
-    objects: PdfObjectsMap,
 }
 
 impl<'a> PdfMemoryReader<'a> {
     pub fn new(bytes: &'a [u8]) -> Self {
         Self {
             parser: PdfParser::new(bytes),
-            objects: PdfObjectsMap::new(),
         }
     }
 
-    pub fn read(&'a mut self) -> Result<Document<'a>, PdfError> {
+    pub fn read(&mut self) -> Result<Document, PdfError> {
         let version = self.read_version()?;
         let (xref_table, trailer_dict) = self.parser.parse_trailer()?;
 
-        let trailer = Trailer::from(&trailer_dict)?;
+        let mut objects = PdfObjectsMap::new();
 
         for (id, entry) in xref_table.iter() {
             if let PdfObject::IndirectObject(object_id, object) =
@@ -36,25 +34,29 @@ impl<'a> PdfMemoryReader<'a> {
                     )));
                 }
 
-                self.objects.insert(object_id, *object);
+                objects.insert(object_id, *object);
             }
         }
 
-        let mut catalog = Catalog::new();
+        let mut doc = Document::try_new(version, &trailer_dict, xref_table)?;
+        doc.objects = objects;
 
-        let root_dict = self.objects.get(&trailer.root).to_dict()?;
+        let root_dict = doc.objects.get(&doc.trailer.root).to_dict()?;
 
-        if root_dict.get("Type")?.to_name()? != "Catalog" {
+        if root_dict.get_required("Type")?.to_name()? != "Catalog" {
             return Err(PdfError::from("Root dictionary is not a catalog."));
         }
 
-        let pages_dict = root_dict.get("Pages")?.deref(&self.objects).to_dict()?;
-        if pages_dict.get("Type")?.to_name()? != "Pages" {
+        let pages_dict = root_dict
+            .get_required("Pages")?
+            .deref(&doc.objects)
+            .to_dict()?;
+        if pages_dict.get_required("Type")?.to_name()? != "Pages" {
             return Err(PdfError::from("Pages dictionary is not a Pages."));
         }
 
-        let page_count = pages_dict.get("Count")?.to_integer()? as usize;
-        let page_ids = pages_dict.get("Kids")?.to_array()?;
+        let page_count = pages_dict.get_required("Count")?.to_integer()? as usize;
+        let page_ids = pages_dict.get_required("Kids")?.to_array()?;
         if page_count != page_ids.items.len() {
             return Err(PdfError::from(
                 "Page count does not match the number of kids.",
@@ -62,22 +64,17 @@ impl<'a> PdfMemoryReader<'a> {
         }
 
         for page_id_obj in page_ids.items.iter() {
-            let page_dict = page_id_obj.deref(&self.objects).to_dict()?;
+            let page_dict = page_id_obj.deref(&doc.objects).to_dict()?;
             let page = Page::from_dict(&page_dict)?;
-            catalog.pages.push(page);
+            doc.catalog.pages.push(page);
         }
 
-        if let Ok(outlines_id) = root_dict.get("Outlines") {
-            let outline_dict = outlines_id.deref(&self.objects).to_dict()?;
+        if let Ok(outlines_id) = root_dict.get_required("Outlines") {
+            let outline_dict = outlines_id.deref(&doc.objects).to_dict()?;
             println!("{:#?}", outline_dict);
         }
 
-        Ok(Document {
-            version,
-            catalog,
-            trailer,
-            xref_table,
-        })
+        Ok(doc)
     }
 
     fn read_version(&mut self) -> Result<String, PdfError> {

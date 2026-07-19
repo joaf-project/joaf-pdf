@@ -34,7 +34,12 @@ pub struct PdfArray {
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct PdfDictionary {
-    pub dict: BTreeMap<String, PdfObject>,
+    dict: BTreeMap<String, PdfObject>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct PdfString {
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -49,7 +54,7 @@ pub enum PdfObject {
     Boolean(bool),
     Integer(i64),
     Real(f64),
-    String(String),
+    String(PdfString),
     Name(String),
     Array(PdfArray),
     Dictionary(PdfDictionary),
@@ -60,7 +65,7 @@ pub enum PdfObject {
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct PdfObjectsMap {
-    pub map: BTreeMap<ObjectId, PdfObject>,
+    map: BTreeMap<ObjectId, PdfObject>,
 }
 
 impl PartialOrd for ObjectId {
@@ -106,13 +111,6 @@ impl PdfObject {
         match self {
             PdfObject::Real(r) => Ok(*r),
             _ => Err(PdfError::type_mismatch("Real", self.str_type())),
-        }
-    }
-
-    pub fn to_str(&self) -> Result<&str, PdfError> {
-        match self {
-            PdfObject::String(s) => Ok(s.as_str()),
-            _ => Err(PdfError::type_mismatch("String", self.str_type())),
         }
     }
 
@@ -196,7 +194,11 @@ impl PdfDictionary {
         self.dict.insert(key, value);
     }
 
-    pub fn get(&self, key: &str) -> Result<&PdfObject, PdfError> {
+    pub fn get(&self, key: &str) -> Option<&PdfObject> {
+        self.dict.get(key)
+    }
+
+    pub fn get_required(&self, key: &str) -> Result<&PdfObject, PdfError> {
         match self.dict.get(key) {
             Some(obj) => Ok(obj),
             None => Err(PdfError::missing_required_key(key)),
