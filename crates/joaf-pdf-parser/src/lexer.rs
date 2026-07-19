@@ -11,7 +11,7 @@ pub enum Token<'a> {
     Real(f64),
     Name(Cow<'a, str>),
     LiteralString(Cow<'a, [u8]>),
-    HexString(Vec<u8>),
+    HexString(Cow<'a, [u8]>),
     BracketOpen,  // [
     BracketClose, // ]
     DictOpen,     // <<
@@ -389,26 +389,38 @@ impl<'a> Lexer<'a> {
     fn read_hex_string(&mut self) -> Result<Token<'a>, PdfError> {
         self.pos += 1; // Skip '<'
 
-        let mut hex_chars = Vec::new();
+        let mut buf = Vec::with_capacity(128); // Pre-allocate a reasonable chunk to reduce re-allocations
+        let mut first_nibble: Option<u8> = None;
 
         while self.pos < self.input.len() {
             let b = self.input[self.pos];
             match b {
                 b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' => {
-                    hex_chars.push(b);
+                    let val = match b {
+                        b'0'..=b'9' => b - b'0',
+                        b'a'..=b'f' => b - b'a' + 10,
+                        b'A'..=b'F' => b - b'A' + 10,
+                        _ => unreachable!(),
+                    };
+
+                    if let Some(first) = first_nibble {
+                        buf.push((first << 4) | val);
+                        first_nibble = None;
+                    } else {
+                        first_nibble = Some(val);
+                    }
                     self.pos += 1;
                 }
                 b'>' => {
                     self.pos += 1; // Skip '>'
 
-                    if hex_chars.len() % 2 != 0 {
-                        hex_chars.push(b'0');
+                    // PDF Spec rule: If there's an odd number of digits,
+                    // the last digit is implicitly 0.
+                    if let Some(first) = first_nibble {
+                        buf.push(first << 4);
                     }
 
-                    let bytes = hex::decode(hex_chars)
-                        .map_err(|_| PdfError::parser("Invalid hex string", self.pos))?;
-
-                    return Ok(Token::HexString(bytes));
+                    return Ok(Token::HexString(Cow::Owned(buf)));
                 }
                 _ => {
                     if is_whitespace(b) {
@@ -522,7 +534,7 @@ mod tests {
             Token::Name(Cow::Borrowed("LiteralString")),
             Token::LiteralString(Cow::Borrowed(b"Hello World")),
             Token::Name(Cow::Borrowed("HexString")),
-            Token::HexString(b"Hello, World!".to_vec()),
+            Token::HexString(Cow::Borrowed(b"Hello, World!")),
             Token::Name(Cow::Borrowed("Reference")),
             Token::Integer(1),
             Token::Integer(0),
@@ -746,13 +758,13 @@ mod tests {
     #[test]
     fn test_read_hex_string() {
         let token = lex_single_token(b"<>").unwrap();
-        assert_eq!(token, Token::HexString(b"".to_vec()));
+        assert_eq!(token, Token::HexString(Cow::Borrowed(b"")));
 
         let token = lex_single_token(b"<48656c6c6f2c20576f726c6421>").unwrap();
-        assert_eq!(token, Token::HexString(b"Hello, World!".to_vec()));
+        assert_eq!(token, Token::HexString(Cow::Borrowed(b"Hello, World!")));
 
         let token = lex_single_token(b"<48656c6c6f2c2>").unwrap();
-        assert_eq!(token, Token::HexString(b"Hello, ".to_vec()));
+        assert_eq!(token, Token::HexString(Cow::Borrowed(b"Hello, ")));
 
         let token = lex_single_token(indoc!(
             b"
@@ -764,7 +776,7 @@ mod tests {
                 >   "
         ))
         .unwrap();
-        assert_eq!(token, Token::HexString(b"Hello, World!".to_vec()));
+        assert_eq!(token, Token::HexString(Cow::Borrowed(b"Hello, World!")));
     }
 
     #[test]

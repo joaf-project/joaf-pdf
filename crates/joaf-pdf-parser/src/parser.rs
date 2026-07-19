@@ -105,7 +105,7 @@ impl<'a> PdfParser<'a> {
                 Ok(PdfObject::Integer(i))
             }
             Token::Real(r) => Ok(PdfObject::Real(r)),
-            Token::LiteralString(s) => Ok(PdfObject::String(PdfString { bytes: s.to_vec() })),
+            Token::LiteralString(s) => Ok(PdfObject::String(PdfString { bytes: s })),
             Token::HexString(s) => Ok(PdfObject::String(PdfString { bytes: s })),
             Token::Keyword(kw) => match kw {
                 "true" => Ok(PDF_TRUE),

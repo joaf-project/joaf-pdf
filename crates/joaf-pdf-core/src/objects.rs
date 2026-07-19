@@ -43,8 +43,8 @@ pub struct PdfName<'a> {
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct PdfString {
-    pub bytes: Vec<u8>,
+pub struct PdfString<'a> {
+    pub bytes: Cow<'a, [u8]>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -59,7 +59,7 @@ pub enum PdfObject<'a> {
     Boolean(bool),
     Integer(i64),
     Real(f64),
-    String(PdfString),
+    String(PdfString<'a>),
     Name(PdfName<'a>),
     Array(PdfArray<'a>),
     Dictionary(PdfDictionary<'a>),
