@@ -34,10 +34,10 @@ pub struct PdfArray<'a> {
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct PdfDictionary<'a> {
-    dict: BTreeMap<String, PdfObject<'a>>,
+    dict: BTreeMap<PdfName<'a>, PdfObject<'a>>,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PdfName<'a> {
     pub str: Cow<'a, str>,
 }
@@ -179,18 +179,18 @@ impl<'a> PdfDictionary<'a> {
         }
     }
 
-    pub fn insert(&mut self, key: String, value: PdfObject<'a>) {
+    pub fn insert(&mut self, key: PdfName<'a>, value: PdfObject<'a>) {
         self.dict.insert(key, value);
     }
 
-    pub fn get(&self, key: &str) -> Option<&PdfObject<'a>> {
+    pub fn get(&self, key: &PdfName<'a>) -> Option<&PdfObject<'a>> {
         self.dict.get(key)
     }
 
-    pub fn get_required(&self, key: &str) -> Result<&PdfObject<'a>, PdfError> {
+    pub fn get_required(&self, key: &PdfName<'a>) -> Result<&PdfObject<'a>, PdfError> {
         match self.dict.get(key) {
             Some(obj) => Ok(obj),
-            None => Err(PdfError::missing_required_key(key)),
+            None => Err(PdfError::missing_required_key(&key.str)),
         }
     }
 }
@@ -210,8 +210,44 @@ impl<'a> From<Cow<'a, str>> for PdfName<'a> {
 }
 
 impl<'a> PdfName<'a> {
+    pub const CONTENTS: PdfName<'static> = PdfName {
+        str: Cow::Borrowed("Contents"),
+    };
+    pub const COUNT: PdfName<'static> = PdfName {
+        str: Cow::Borrowed("Count"),
+    };
+    pub const FILTER: PdfName<'static> = PdfName {
+        str: Cow::Borrowed("Filter"),
+    };
+    pub const KIDS: PdfName<'static> = PdfName {
+        str: Cow::Borrowed("Kids"),
+    };
+    pub const LENGTH: PdfName<'static> = PdfName {
+        str: Cow::Borrowed("Length"),
+    };
+    pub const MEDIA_BOX: PdfName<'static> = PdfName {
+        str: Cow::Borrowed("MediaBox"),
+    };
+    pub const OUTLINES: PdfName<'static> = PdfName {
+        str: Cow::Borrowed("Outlines"),
+    };
     pub const PAGE: PdfName<'static> = PdfName {
         str: Cow::Borrowed("Page"),
+    };
+    pub const PAGES: PdfName<'static> = PdfName {
+        str: Cow::Borrowed("Pages"),
+    };
+    pub const PARENTS: PdfName<'static> = PdfName {
+        str: Cow::Borrowed("Parents"),
+    };
+    pub const RESOURCES: PdfName<'static> = PdfName {
+        str: Cow::Borrowed("Resources"),
+    };
+    pub const ROOT: PdfName<'static> = PdfName {
+        str: Cow::Borrowed("Root"),
+    };
+    pub const SIZE: PdfName<'static> = PdfName {
+        str: Cow::Borrowed("Size"),
     };
     pub const TYPE: PdfName<'static> = PdfName {
         str: Cow::Borrowed("Type"),

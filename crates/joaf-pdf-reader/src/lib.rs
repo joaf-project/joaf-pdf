@@ -1,4 +1,4 @@
-use joaf_pdf_core::{PdfError, PdfObject, PdfObjectsMap};
+use joaf_pdf_core::{PdfError, PdfName, PdfObject, PdfObjectsMap};
 use joaf_pdf_dom::{Document, Page};
 use joaf_pdf_parser::PdfParser;
 
@@ -48,20 +48,20 @@ impl<'a> PdfMemoryReader<'a> {
 
         let root_dict = doc.objects.get(&doc.trailer.root).to_dict()?;
 
-        if root_dict.get_required("Type")?.to_name()?.str != "Catalog" {
+        if root_dict.get_required(&PdfName::TYPE)?.to_name()?.str != "Catalog" {
             return Err(PdfError::from("Root dictionary is not a catalog."));
         }
 
         let pages_dict = root_dict
-            .get_required("Pages")?
+            .get_required(&PdfName::PAGES)?
             .deref(&doc.objects)
             .to_dict()?;
-        if pages_dict.get_required("Type")?.to_name()?.str != "Pages" {
+        if pages_dict.get_required(&PdfName::TYPE)?.to_name()?.str != "Pages" {
             return Err(PdfError::from("Pages dictionary is not a Pages."));
         }
 
-        let page_count = pages_dict.get_required("Count")?.to_integer()? as usize;
-        let page_ids = pages_dict.get_required("Kids")?.to_array()?;
+        let page_count = pages_dict.get_required(&PdfName::COUNT)?.to_integer()? as usize;
+        let page_ids = pages_dict.get_required(&PdfName::KIDS)?.to_array()?;
         if page_count != page_ids.items.len() {
             return Err(PdfError::from(
                 "Page count does not match the number of kids.",
@@ -74,7 +74,7 @@ impl<'a> PdfMemoryReader<'a> {
             doc.catalog.pages.push(page);
         }
 
-        if let Ok(outlines_id) = root_dict.get_required("Outlines") {
+        if let Ok(outlines_id) = root_dict.get_required(&PdfName::OUTLINES) {
             let outline_dict = outlines_id.deref(&doc.objects).to_dict()?;
             println!("{:#?}", outline_dict);
         }

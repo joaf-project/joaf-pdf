@@ -1,4 +1,4 @@
-use joaf_pdf_core::{PdfDictionary, PdfError, PdfObject};
+use joaf_pdf_core::{PdfDictionary, PdfError, PdfName, PdfObject};
 
 pub struct Rect {
     pub x: u32,
@@ -32,13 +32,13 @@ impl Rect {
 
 impl<'a> Page<'a> {
     pub fn from_dict(dict: &PdfDictionary<'a>) -> Result<Self, PdfError> {
-        if dict.get_required("Type")?.to_name()?.str != "Page" {
+        if dict.get_required(&PdfName::TYPE)?.to_name()?.str != "Page" {
             return Err(PdfError::from("Type is not a Page."));
         }
 
-        let media_box = Rect::from_obj(dict.get_required("MediaBox")?)?;
-        let contents = dict.get_required("Contents")?.clone();
-        let resources = dict.get_required("Resources")?.to_dict()?.clone();
+        let media_box = Rect::from_obj(dict.get_required(&PdfName::MEDIA_BOX)?)?;
+        let contents = dict.get_required(&PdfName::CONTENTS)?.clone();
+        let resources = dict.get_required(&PdfName::RESOURCES)?.to_dict()?.clone();
 
         Ok(Self {
             media_box,
