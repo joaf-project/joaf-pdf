@@ -49,9 +49,19 @@ impl<'a> Lexer<'a> {
         Lexer { input, pos: 0 }
     }
 
+    pub fn peek_token(&mut self) -> Result<Token, PdfError> {
+        let pos = self.pos;
+        let token = self.next_token()?;
+        self.pos = pos;
+        Ok(token)
+    }
+
     pub fn next_token(&mut self) -> Result<Token, PdfError> {
         self.skip_whitespace();
+        self.require_token()
+    }
 
+    pub fn require_token(&mut self) -> Result<Token, PdfError> {
         if self.pos >= self.input.len() {
             return Ok(Token::EOF);
         }
@@ -87,6 +97,34 @@ impl<'a> Lexer<'a> {
             }
             _ => Ok(self.read_keyword()?),
         }
+    }
+
+    pub fn skip_optional_newline(&mut self) -> Result<(), PdfError> {
+        if self.pos + 2 > self.input.len() {
+            return Err(PdfError::unexpected_eof(self.pos));
+        }
+
+        if self.input[self.pos] == b'\n' {
+            self.pos += 1;
+            return Ok(());
+        }
+
+        if self.input[self.pos] == b'\r' && self.input[self.pos + 1] == b'\n' {
+            self.pos += 2;
+            return Ok(());
+        }
+
+        return Ok(());
+    }
+
+    pub fn consume_bytes(&mut self, amount: usize) -> Result<Vec<u8>, PdfError> {
+        if self.pos + amount > self.input.len() {
+            return Err(PdfError::unexpected_eof(self.pos));
+        }
+
+        let bytes = self.input[self.pos..self.pos + amount].to_vec();
+        self.pos += amount;
+        Ok(bytes)
     }
 
     fn skip_whitespace(&mut self) {
@@ -695,7 +733,7 @@ mod tests {
     fn test_read_hex_string_invalid_escape() {
         match lex_single_token(b"<48656c6c6f2c20576f726c6421g>") {
             Ok(t) => panic!("Expected error, got: {:?}", t),
-            Err(e) => assert_eq!(e, PdfError::parser("Invalid hex character", 0)),
+            Err(e) => assert_eq!(e, PdfError::parser("Invalid character in hex string", 27)),
         }
     }
 }

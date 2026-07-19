@@ -59,6 +59,12 @@ impl PdfError {
             message: format!("Parser error at position {}: {}", position, message),
         }
     }
+
+    pub fn type_mismatch(expected: &str, actual: &str) -> Self {
+        Self {
+            message: format!("Type mismatch: expected {}, got {}", expected, actual),
+        }
+    }
 }
 
 impl Error for PdfError {

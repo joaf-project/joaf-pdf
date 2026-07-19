@@ -1,26 +1,15 @@
-use std::collections::BTreeMap;
+use joaf_pdf_core::XrefTable;
 
-use joaf_pdf_core::{PdfObject, XrefEntry};
+use crate::{Catalog, Trailer};
 
-use crate::PdfCatalog;
-
-pub struct PdfDocument {
+pub struct Document<'a> {
     pub version: String,
-    pub catalog: PdfCatalog,
-    pub trailer: BTreeMap<String, PdfObject>,
-    pub xref_table: BTreeMap<u32, XrefEntry>,
+    pub catalog: Catalog<'a>,
+    pub trailer: Trailer,
+    pub xref_table: XrefTable,
 }
 
-impl PdfDocument {
-    pub fn new() -> Self {
-        Self {
-            version: String::new(),
-            catalog: PdfCatalog::new(),
-            trailer: BTreeMap::new(),
-            xref_table: BTreeMap::new(),
-        }
-    }
-}
+impl<'a> Document<'a> {}
 
 #[cfg(test)]
 mod tests {}

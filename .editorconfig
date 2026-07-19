@@ -1,0 +1,4 @@
+root = true
+
+[*.pdf]
+trim_trailing_whitespace = false

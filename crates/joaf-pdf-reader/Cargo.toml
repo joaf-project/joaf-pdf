@@ -9,4 +9,5 @@ repository.workspace = true
 [dependencies]
 joaf-pdf-core = { version = "0.1.0", path = "../joaf-pdf-core" }
 joaf-pdf-dom = { version = "0.1.0", path = "../joaf-pdf-dom" }
+joaf-pdf-parser = { version = "0.1.0", path = "../joaf-pdf-parser" }
 mmap-io = "1.0.0"

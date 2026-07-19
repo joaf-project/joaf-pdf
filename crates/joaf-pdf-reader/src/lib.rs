@@ -1,98 +1,92 @@
-use std::collections::BTreeMap;
+use joaf_pdf_core::{ObjectId, PdfError, PdfObject, PdfObjectsMap};
+use joaf_pdf_dom::{Catalog, Document, Page, Trailer};
+use joaf_pdf_parser::PdfParser;
 
-use joaf_pdf_core::{PdfDictionary, PdfError, XrefEntry};
-use joaf_pdf_dom::PdfDocument;
-
-pub struct PdfReader<'a> {
-    pub document: PdfDocument,
-    bytes: &'a [u8],
-    pos: usize,
-    len: usize,
+pub struct PdfMemoryReader<'a> {
+    parser: PdfParser<'a>,
+    objects: PdfObjectsMap,
 }
 
-impl<'a> PdfReader<'a> {
+impl<'a> PdfMemoryReader<'a> {
     pub fn new(bytes: &'a [u8]) -> Self {
         Self {
-            document: PdfDocument::new(),
-            bytes,
-            pos: 0,
-            len: bytes.len(),
+            parser: PdfParser::new(bytes),
+            objects: PdfObjectsMap::new(),
         }
     }
 
-    pub fn read(&mut self) -> Result<(), PdfError> {
-        self.read_version()?;
-        self.read_trailer()?;
+    pub fn read(&'a mut self) -> Result<Document<'a>, PdfError> {
+        let version = self.read_version()?;
+        let (xref_table, trailer_dict) = self.parser.parse_trailer()?;
 
-        Ok(())
-    }
+        let trailer = Trailer::from(&trailer_dict)?;
 
-    fn discard_line(&mut self) -> Result<(), PdfError> {
-        loop {
-            if self.pos >= self.len {
-                return Err(PdfError::new("Unexpected EOF"));
-            }
-            let byte = self.bytes[self.pos];
-            self.pos += 1;
-
-            match byte {
-                b'\r' | b'\n' => break,
-                _ => continue,
-            }
-        }
-
-        Ok(())
-    }
-
-    fn discard_whitespace(&mut self) -> Result<(), PdfError> {
-        loop {
-            if self.pos >= self.len {
-                return Err(PdfError::new("Unexpected EOF"));
-            }
-            let byte = self.bytes[self.pos];
-            self.pos += 1;
-
-            match byte {
-                b' ' | b'\t' | b'\r' | b'\n' => continue,
-                b'%' => self.discard_line()?,
-                _ => {
-                    self.pos -= 1;
-                    break;
+        for (id, entry) in xref_table.iter() {
+            if let PdfObject::IndirectObject(object_id, object) =
+                self.parser.parse_object_at(entry.byte_offset)?
+            {
+                if *id == 0 && entry.generation == 65535 {
+                    continue;
                 }
+
+                if object_id.id != *id || object_id.generation != entry.generation {
+                    return Err(PdfError::invalid_reference(&format!(
+                        "Invalid object id or generation: {}:{} != {}:{}",
+                        object_id.id, object_id.generation, id, entry.generation
+                    )));
+                }
+
+                self.objects.insert(object_id, *object);
             }
         }
 
-        Ok(())
-    }
+        let mut catalog = Catalog::new();
 
-    fn read_line(&mut self, buffer: &mut String) -> Result<(), PdfError> {
-        self.discard_whitespace()?;
+        let root_dict = self.objects.get(&trailer.root).to_dict()?;
 
-        buffer.clear();
-
-        loop {
-            if self.pos >= self.len {
-                return Err(PdfError::new("Unexpected EOF"));
-            }
-            let byte = self.bytes[self.pos];
-            self.pos += 1;
-
-            match byte {
-                b'\r' | b'\n' => break,
-                _ => buffer.push(byte as char),
-            }
+        if root_dict.get("Type")?.to_name()? != "Catalog" {
+            return Err(PdfError::new("Root dictionary is not a catalog."));
         }
 
-        Ok(())
+        let pages_dict = root_dict.get("Pages")?.deref(&self.objects).to_dict()?;
+        if pages_dict.get("Type")?.to_name()? != "Pages" {
+            return Err(PdfError::new("Pages dictionary is not a Pages."));
+        }
+
+        let page_count = pages_dict.get("Count")?.to_integer()? as usize;
+        let page_ids = pages_dict.get("Kids")?.to_array()?;
+        if page_count != page_ids.items.len() {
+            return Err(PdfError::new(
+                "Page count does not match the number of kids.",
+            ));
+        }
+
+        for page_id_obj in page_ids.items.iter() {
+            let page_dict = page_id_obj.deref(&self.objects).to_dict()?;
+            let page = Page::from_dict(&page_dict)?;
+            catalog.pages.push(page);
+        }
+
+        if let Ok(outlines_id) = root_dict.get("Outlines") {
+            let outline_dict = outlines_id.deref(&self.objects).to_dict()?;
+            println!("{:#?}", outline_dict);
+        }
+
+        Ok(Document {
+            version,
+            catalog,
+            trailer,
+            xref_table,
+        })
     }
 
-    fn read_version(&mut self) -> Result<(), PdfError> {
-        if !self.bytes.starts_with(b"%PDF-") {
+    fn read_version(&mut self) -> Result<String, PdfError> {
+        if !self.parser.lexer.input.starts_with(b"%PDF-") {
             return Err(PdfError::new("No %PDF- header found."));
         }
 
         let mut version = String::new();
-        for b in self.bytes[5..].iter() {
+        for b in self.parser.lexer.input[5..].iter() {
             match b {
                 b'0'..=b'9' => version.push(*b as char),
                 b'.' => version.push(*b as char),
@@ -100,109 +94,7 @@ impl<'a> PdfReader<'a> {
             }
         }
 
-        self.document.version = version;
-        Ok(())
-    }
-
-    fn read_trailer(&mut self) -> Result<(), PdfError> {
-        const EOF_MARKER: &[u8] = b"%%EOF";
-        const START_XREF: &[u8] = b"startxref";
-        let mut line_buffer = String::new();
-
-        let position = self
-            .bytes
-            .windows(EOF_MARKER.len())
-            .rposition(|window| window == EOF_MARKER)
-            .ok_or(PdfError::new("No %%EOF marker found."))?;
-
-        let position = self.bytes[..position]
-            .windows(START_XREF.len())
-            .rposition(|window| window == START_XREF)
-            .ok_or(PdfError::new("No startxref found."))?;
-
-        self.pos = position + START_XREF.len();
-        self.read_line(&mut line_buffer)?;
-
-        let trailer_pos = line_buffer
-            .trim()
-            .parse::<usize>()
-            .map_err(|_| PdfError::new("Invalid trailer position."))?;
-
-        self.pos = trailer_pos;
-
-        let mut line_buffer = String::new();
-
-        self.discard_whitespace()?;
-        self.read_line(&mut line_buffer)?;
-        if line_buffer.trim() != "xref" {
-            return Err(PdfError::new("xref section missing."));
-        }
-
-        self.read_line(&mut line_buffer)?;
-
-        let xref_parts = line_buffer
-            .split_whitespace()
-            .map(|x| x.parse::<u32>())
-            .collect::<Result<Vec<u32>, _>>()
-            .map_err(|_| PdfError::new("Invalid xref section."))?;
-
-        if xref_parts.len() != 2 {
-            return Err(PdfError::new("Invalid xref section header."));
-        }
-
-        let xref_start_obj = xref_parts[0];
-        let xref_section_count = xref_parts[1];
-
-        let mut xref_table: BTreeMap<u32, XrefEntry> = BTreeMap::new();
-
-        for xref_section_index in 0..xref_section_count {
-            self.read_line(&mut line_buffer)?;
-
-            let xref_section = line_buffer.split_whitespace().collect::<Vec<&str>>();
-
-            if xref_section.len() != 3 {
-                return Err(PdfError::new("Invalid xref section: invalid format."));
-            }
-
-            let position = xref_section[0]
-                .parse::<usize>()
-                .map_err(|_| PdfError::new("Invalid xref section: Invalid position."))?;
-            let generation = xref_section[1]
-                .parse::<usize>()
-                .map_err(|_| PdfError::new("Invalid xref section: Invalid generation."))?;
-            let is_in_use = xref_section[2] == "n";
-
-            if xref_start_obj == 0 && position == 0 {
-                if generation != 65535 || is_in_use {
-                    return Err(PdfError::new(
-                        "Invalid xref section: First entry must be free object.",
-                    ));
-                }
-                continue;
-            }
-
-            xref_table.insert(
-                xref_start_obj + xref_section_index,
-                XrefEntry {
-                    byte_offset: position as u64,
-                    generation: generation as u16,
-                    in_use: is_in_use,
-                },
-            );
-        }
-
-        self.read_line(&mut line_buffer)?;
-        if line_buffer.trim() != "trailer" {
-            return Err(PdfError::new("trailer section missing."));
-        }
-
-        self.document.xref_table = xref_table;
-        Ok(())
-    }
-
-    fn read_dictionary(&mut self, buffer: &str) -> Result<PdfDictionary, PdfError> {
-        let mut dictionary = PdfDictionary::new();
-        Ok(dictionary)
+        Ok(version)
     }
 }
 
@@ -220,13 +112,15 @@ mod tests {
         let bytes = &mmap
             .as_slice(0, mmap.len())
             .map_err(|err| PdfError::new(&format!("Failed to open memory mapped file: {}", err)))?;
-        let mut pdf_reader = PdfReader::new(bytes);
-        pdf_reader.read()?;
+        let mut pdf_reader = PdfMemoryReader::new(bytes);
+        let document = pdf_reader.read()?;
 
-        println!("PDF version: {}", pdf_reader.document.version);
-        for (key, value) in pdf_reader.document.xref_table.iter() {
+        println!("PDF version: {}", document.version);
+        for (key, value) in document.xref_table.iter() {
             println!("Xref entry: {} = {:#?}", key, value);
         }
+
+        assert!(document.catalog.pages.len() == 1);
 
         Ok(())
     }
@@ -238,13 +132,15 @@ mod tests {
         let mut buf: Vec<u8> = Vec::new();
         file.read_to_end(&mut buf)
             .map_err(PdfError::from_io_error)?;
-        let mut pdf_reader = PdfReader::new(&buf);
-        pdf_reader.read()?;
+        let mut pdf_reader = PdfMemoryReader::new(&buf);
+        let document = pdf_reader.read()?;
 
-        println!("PDF version: {}", pdf_reader.document.version);
-        for (key, value) in pdf_reader.document.xref_table.iter() {
+        println!("PDF version: {}", document.version);
+        for (key, value) in document.xref_table.iter() {
             println!("Xref entry: {} = {:#?}", key, value);
         }
+
+        assert!(document.catalog.pages.len() == 1);
 
         Ok(())
     }

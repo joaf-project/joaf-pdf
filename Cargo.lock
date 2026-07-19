@@ -65,6 +65,7 @@ version = "0.1.0"
 dependencies = [
  "joaf-pdf-core",
  "joaf-pdf-dom",
+ "joaf-pdf-parser",
  "mmap-io",
 ]
 

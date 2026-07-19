@@ -1,10 +1,10 @@
-use crate::PdfPage;
+use crate::Page;
 
-pub struct PdfCatalog {
-    pub pages: Vec<PdfPage>,
+pub struct Catalog<'a> {
+    pub pages: Vec<Page<'a>>,
 }
 
-impl PdfCatalog {
+impl<'a> Catalog<'a> {
     pub fn new() -> Self {
         Self { pages: Vec::new() }
     }
