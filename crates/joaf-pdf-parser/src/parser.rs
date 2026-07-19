@@ -36,7 +36,7 @@ impl<'a> PdfParser<'a> {
                 // Check for a indirect reference (0 0 R) or object (0 0 obj)
                 if let Token::Integer(generation) = self.lexer.next_token()? {
                     if let Token::Keyword(kw) = self.lexer.next_token()? {
-                        match kw.as_str() {
+                        match kw {
                             "R" => {
                                 return Ok(PdfObject::Reference(ObjectId {
                                     id: i as u32,
@@ -45,8 +45,8 @@ impl<'a> PdfParser<'a> {
                             }
                             "obj" => {
                                 let obj = self.parse_object()?;
-                                if let Token::Keyword(ref kw) = self.lexer.next_token()? {
-                                    if kw.as_str() == "endobj" {
+                                if let Token::Keyword(kw) = self.lexer.next_token()? {
+                                    if kw == "endobj" {
                                         return Ok(PdfObject::IndirectObject(
                                             ObjectId {
                                                 id: i as u32,
@@ -68,14 +68,15 @@ impl<'a> PdfParser<'a> {
             }
             Token::Real(r) => Ok(PdfObject::Real(r)),
             Token::LiteralString(s) => {
-                let decoded = String::from_utf8(s).map_err(PdfError::from_from_utf8_error)?;
+                let decoded =
+                    String::from_utf8(s.into()).map_err(PdfError::from_from_utf8_error)?;
                 Ok(PdfObject::String(decoded))
             }
             Token::HexString(s) => {
                 let decoded = String::from_utf8(s).map_err(PdfError::from_from_utf8_error)?;
                 Ok(PdfObject::String(decoded))
             }
-            Token::Keyword(ref kw) => match kw.as_str() {
+            Token::Keyword(kw) => match kw {
                 "true" => Ok(PDF_TRUE),
                 "false" => Ok(PDF_FALSE),
                 "null" => Ok(PDF_NULL),
@@ -113,7 +114,7 @@ impl<'a> PdfParser<'a> {
         let xref_table = self.parse_xref_table()?;
 
         if let Token::Keyword(kw) = self.lexer.next_token()? {
-            if kw.as_str() != "trailer" {
+            if kw != "trailer" {
                 return Err(PdfError::new("Invalid trailer."));
             }
         } else {
@@ -141,7 +142,7 @@ impl<'a> PdfParser<'a> {
 
     fn parse_xref_table(&mut self) -> Result<XrefTable, PdfError> {
         if let Token::Keyword(kw) = self.lexer.next_token()? {
-            if kw.as_str() != "xref" {
+            if kw != "xref" {
                 return Err(PdfError::new("Invalid xref table."));
             }
         } else {
@@ -168,7 +169,7 @@ impl<'a> PdfParser<'a> {
         for section_index in 0..section_count {
             let position: u32;
             let generation: u32;
-            let keyword: String;
+            let keyword: &str;
 
             if let Token::Integer(value) = self.lexer.next_token()? {
                 position = value as u32;
@@ -193,7 +194,7 @@ impl<'a> PdfParser<'a> {
                 XrefEntry {
                     byte_offset: position as u64,
                     generation: generation as u16,
-                    in_use: keyword.as_str() == "n",
+                    in_use: keyword == "n",
                 },
             );
         }
@@ -229,19 +230,19 @@ impl<'a> PdfParser<'a> {
                     // Check for a stream
                     let token = self.lexer.peek_token()?;
                     match token {
-                        Token::Keyword(ref kw) => {
-                            match kw.as_str() {
+                        Token::Keyword(kw) => {
+                            match kw {
                                 "stream" => {
                                     self.lexer.next_token()?; // discard "stream" token
                                     self.lexer.skip_optional_newline()?;
                                     let len = dict.get("Length")?.to_integer()? as usize;
                                     let stream_data = self.lexer.consume_bytes(len)?;
                                     self.lexer.skip_optional_newline()?;
-                                    if let Token::Keyword(ref kw) = self.lexer.require_token()? {
-                                        if kw.as_str() == "endstream" {
+                                    if let Token::Keyword(kw) = self.lexer.require_token()? {
+                                        if kw == "endstream" {
                                             return Ok(PdfObject::Stream(PdfStream::new(
                                                 dict,
-                                                stream_data,
+                                                stream_data.to_vec(),
                                             )));
                                         }
                                     }

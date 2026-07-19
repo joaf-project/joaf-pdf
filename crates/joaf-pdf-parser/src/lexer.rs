@@ -1,14 +1,16 @@
+use std::borrow::Cow;
+
 use joaf_pdf_core::PdfError;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Token {
+pub enum Token<'a> {
     EOF,
 
-    Keyword(String),
+    Keyword(&'a str),
     Integer(i64),
     Real(f64),
-    Name(String),
-    LiteralString(Vec<u8>),
+    Name(Cow<'a, str>),
+    LiteralString(Cow<'a, [u8]>),
     HexString(Vec<u8>),
     BracketOpen,  // [
     BracketClose, // ]
@@ -16,28 +18,7 @@ pub enum Token {
     DictClose,    // >>
 }
 
-impl Token {
-    pub fn as_integer(&self) -> Option<i64> {
-        match self {
-            Token::Integer(i) => Some(*i),
-            _ => None,
-        }
-    }
-
-    pub fn as_real(&self) -> Option<f64> {
-        match self {
-            Token::Real(r) => Some(*r),
-            _ => None,
-        }
-    }
-
-    pub fn as_str(&self) -> Option<&str> {
-        match self {
-            Token::Name(s) => Some(s),
-            _ => None,
-        }
-    }
-}
+impl<'a> Token<'a> {}
 
 pub struct Lexer<'a> {
     pub input: &'a [u8],
@@ -49,19 +30,19 @@ impl<'a> Lexer<'a> {
         Lexer { input, pos: 0 }
     }
 
-    pub fn peek_token(&mut self) -> Result<Token, PdfError> {
+    pub fn peek_token(&mut self) -> Result<Token<'a>, PdfError> {
         let pos = self.pos;
         let token = self.next_token()?;
         self.pos = pos;
         Ok(token)
     }
 
-    pub fn next_token(&mut self) -> Result<Token, PdfError> {
+    pub fn next_token(&mut self) -> Result<Token<'a>, PdfError> {
         self.skip_whitespace();
         self.require_token()
     }
 
-    pub fn require_token(&mut self) -> Result<Token, PdfError> {
+    pub fn require_token(&mut self) -> Result<Token<'a>, PdfError> {
         if self.pos >= self.input.len() {
             return Ok(Token::EOF);
         }
@@ -117,14 +98,14 @@ impl<'a> Lexer<'a> {
         return Ok(());
     }
 
-    pub fn consume_bytes(&mut self, amount: usize) -> Result<Vec<u8>, PdfError> {
+    pub fn consume_bytes(&mut self, amount: usize) -> Result<&'a [u8], PdfError> {
         if self.pos + amount > self.input.len() {
             return Err(PdfError::unexpected_eof(self.pos));
         }
 
-        let bytes = self.input[self.pos..self.pos + amount].to_vec();
+        let start = self.pos;
         self.pos += amount;
-        Ok(bytes)
+        Ok(&self.input[start..self.pos])
     }
 
     fn skip_whitespace(&mut self) {
@@ -148,7 +129,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn read_keyword(&mut self) -> Result<Token, PdfError> {
+    fn read_keyword(&mut self) -> Result<Token<'a>, PdfError> {
         let start = self.pos;
         while self.pos < self.input.len() {
             let b = self.input[self.pos];
@@ -159,10 +140,10 @@ impl<'a> Lexer<'a> {
         }
         let s = std::str::from_utf8(&self.input[start..self.pos])
             .map_err(|_| PdfError::parser("Invalid keyword", start))?;
-        Ok(Token::Keyword(s.to_string()))
+        Ok(Token::Keyword(s))
     }
 
-    fn read_number(&mut self) -> Result<Token, PdfError> {
+    fn read_number(&mut self) -> Result<Token<'a>, PdfError> {
         let start = self.pos;
 
         let mut is_real = false;
@@ -216,49 +197,108 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn read_name(&mut self) -> Result<Token, PdfError> {
+    fn read_name(&mut self) -> Result<Token<'a>, PdfError> {
         self.pos += 1; // Skip '/'
-        let mut name = String::new();
+        let start = self.pos;
+        let mut has_escapes = false;
+
         while self.pos < self.input.len() {
             let b = self.input[self.pos];
             if is_delimiter(b) || is_whitespace(b) {
                 break;
             }
-            if b == b'#' && self.pos + 2 < self.input.len() {
-                let hex_str = std::str::from_utf8(&self.input[self.pos + 1..self.pos + 3])
-                    .map_err(|_| {
-                        PdfError::parser("Invalid escaped character sequence", self.pos)
-                    })?;
-                let val = u8::from_str_radix(hex_str, 16).map_err(|_| {
-                    PdfError::parser("Invalid escaped character sequence", self.pos)
-                })?;
-                name.push(val as char);
-                self.pos += 3;
-            } else {
-                name.push(b as char);
-                self.pos += 1;
+            if b == b'#' {
+                has_escapes = true;
             }
+            self.pos += 1;
         }
 
-        Ok(Token::Name(name))
+        let end = self.pos;
+
+        let raw_bytes = &self.input[start..end];
+        let raw_str = std::str::from_utf8(raw_bytes).map_err(PdfError::from_utf8_error)?;
+
+        if !has_escapes {
+            Ok(Token::Name(Cow::Borrowed(raw_str)))
+        } else {
+            let mut name = String::with_capacity(raw_bytes.len());
+            let mut i = start;
+
+            while i < end {
+                let b = self.input[i];
+                if b == b'#' && i + 2 < end {
+                    let hex_str = std::str::from_utf8(&self.input[i + 1..i + 3])
+                        .map_err(PdfError::from_utf8_error)?;
+                    let val = u8::from_str_radix(hex_str, 16)
+                        .map_err(|_| PdfError::parser("Invalid escaped sequence", i))?;
+                    name.push(val as char);
+                    i += 3;
+                } else {
+                    name.push(b as char);
+                    i += 1;
+                }
+            }
+            Ok(Token::Name(Cow::Owned(name)))
+        }
     }
 
-    fn read_literal_string(&mut self) -> Result<Token, PdfError> {
+    fn read_literal_string(&mut self) -> Result<Token<'a>, PdfError> {
         self.pos += 1; // Skip '('
+        let start = self.pos;
 
-        let mut buf = Vec::new();
         let mut paren_count = 1;
+        let mut has_escapes = false;
 
         while self.pos < self.input.len() {
             let b = self.input[self.pos];
-
             match b {
                 b'\\' => {
-                    if self.pos >= self.input.len() {
+                    has_escapes = true;
+                    self.pos += 2;
+                }
+                b'(' => {
+                    paren_count += 1;
+                    self.pos += 1;
+                }
+                b')' => {
+                    paren_count -= 1;
+                    if paren_count == 0 {
+                        let end = self.pos;
+                        self.pos += 1; // Skip the final ')'
+
+                        if !has_escapes {
+                            return Ok(Token::LiteralString(Cow::Borrowed(
+                                &self.input[start..end],
+                            )));
+                        } else {
+                            break;
+                        }
+                    }
+                    self.pos += 1;
+                }
+                _ => {
+                    self.pos += 1;
+                }
+            }
+        }
+
+        if paren_count != 0 {
+            return Err(PdfError::parser("Unexpected end of input", self.pos));
+        }
+
+        let end_pos = self.pos - 1; // The final ')' position
+        self.pos = start;
+
+        let mut buf = Vec::with_capacity(end_pos - start);
+
+        while self.pos < end_pos {
+            let b = self.input[self.pos];
+            match b {
+                b'\\' => {
+                    self.pos += 1; // skip '\'
+                    if self.pos >= end_pos {
                         return Err(PdfError::parser("Unexpected end of input", self.pos));
                     }
-
-                    self.pos += 1; // skip '\'
 
                     let b2 = self.input[self.pos];
                     match b2 {
@@ -295,61 +335,37 @@ impl<'a> Lexer<'a> {
                             self.pos += 1;
                         }
                         b'\n' | b'\r' => {
-                            // line continuation
+                            // Line continuation: ignore the newline completely
                             self.pos += 1;
+                            let b2 = self.input[self.pos];
+                            if b2 == b'\n' || b2 == b'\r' {
+                                self.pos += 1;
+                            }
                         }
                         b'0'..=b'7' => {
-                            // octal
-                            let start = self.pos;
+                            // Parse Octal up to 3 digits
+                            let octal_start = self.pos;
                             let mut count = 0;
-                            loop {
-                                count += 1;
-                                self.pos += 1;
-
-                                if count >= 3 {
+                            while count < 3 && self.pos < end_pos {
+                                if matches!(self.input[self.pos], b'0'..=b'7') {
+                                    count += 1;
+                                    self.pos += 1;
+                                } else {
                                     break;
-                                }
-
-                                if self.pos >= self.input.len() {
-                                    return Err(PdfError::parser(
-                                        "Unexpected end of input",
-                                        self.pos,
-                                    ));
-                                }
-
-                                match self.input[self.pos] {
-                                    b'0'..=b'7' => continue,
-                                    _ => break,
                                 }
                             }
 
-                            let val = u8::from_str_radix(
-                                std::str::from_utf8(&self.input[start..self.pos])
-                                    .map_err(|_| PdfError::parser("Invalid octal number", start))?,
-                                8,
-                            )
-                            .map_err(|_| PdfError::parser("Invalid octal number", start))?;
+                            let octal_str = std::str::from_utf8(&self.input[octal_start..self.pos])
+                                .map_err(|_| {
+                                    PdfError::parser("Invalid octal number", octal_start)
+                                })?;
+                            let val = u8::from_str_radix(octal_str, 8).map_err(|_| {
+                                PdfError::parser("Invalid octal number", octal_start)
+                            })?;
                             buf.push(val);
                         }
                         _ => return Err(PdfError::parser("Invalid escaped character", self.pos)),
                     }
-                }
-                b'(' => {
-                    paren_count += 1;
-
-                    buf.push(b);
-                    self.pos += 1;
-                }
-                b')' => {
-                    paren_count -= 1;
-
-                    if paren_count == 0 {
-                        self.pos += 1; // Skip ')'
-                        return Ok(Token::LiteralString(buf));
-                    }
-
-                    buf.push(b);
-                    self.pos += 1;
                 }
                 _ => {
                     buf.push(b);
@@ -358,10 +374,11 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        Err(PdfError::parser("Unexpected end of input", self.pos))
+        self.pos = end_pos + 1; // Ensure the cursor finishes right after the closing ')'
+        Ok(Token::LiteralString(Cow::Owned(buf)))
     }
 
-    fn read_hex_string(&mut self) -> Result<Token, PdfError> {
+    fn read_hex_string(&mut self) -> Result<Token<'a>, PdfError> {
         self.pos += 1; // Skip '<'
 
         let mut hex_chars = Vec::new();
@@ -437,7 +454,7 @@ mod tests {
 
     use super::*;
 
-    fn lex_single_token(input: &[u8]) -> Result<Token, PdfError> {
+    fn lex_single_token(input: &[u8]) -> Result<Token<'_>, PdfError> {
         let mut lexer = Lexer::new(input);
         lexer.next_token()
     }
@@ -471,45 +488,45 @@ mod tests {
         let tokens = [
             Token::Integer(1),
             Token::Integer(0),
-            Token::Keyword("obj".to_string()),
+            Token::Keyword("obj"),
             Token::DictOpen,
-            Token::Name("Name".to_string()),
-            Token::Name("Value".to_string()),
-            Token::Name("Name".to_string()),
-            Token::Name("Value".to_string()),
-            Token::Name("Integer".to_string()),
+            Token::Name(Cow::Borrowed("Name")),
+            Token::Name(Cow::Borrowed("Value")),
+            Token::Name(Cow::Borrowed("Name")),
+            Token::Name(Cow::Borrowed("Value")),
+            Token::Name(Cow::Borrowed("Integer")),
             Token::Integer(0),
-            Token::Name("Integer".to_string()),
+            Token::Name(Cow::Borrowed("Integer")),
             Token::Integer(-123),
-            Token::Name("Real".to_string()),
-            Token::Real(0.0),
-            Token::Name("Real".to_string()),
+            Token::Name(Cow::Borrowed("Real")),
+            Token::Real(0.),
+            Token::Name(Cow::Borrowed("Real")),
             Token::Real(0.123),
-            Token::Name("Array".to_string()),
+            Token::Name(Cow::Borrowed("Array")),
             Token::BracketOpen,
-            Token::Name("Name".to_string()),
-            Token::Name("Value".to_string()),
+            Token::Name(Cow::Borrowed("Name")),
+            Token::Name(Cow::Borrowed("Value")),
             Token::Integer(0),
             Token::Integer(123),
-            Token::Real(0.0),
+            Token::Real(0.),
             Token::Real(0.123),
             Token::BracketClose,
-            Token::Name("LiteralString".to_string()),
-            Token::LiteralString(b"Hello World".to_vec()),
-            Token::Name("HexString".to_string()),
+            Token::Name(Cow::Borrowed("LiteralString")),
+            Token::LiteralString(Cow::Borrowed(b"Hello World")),
+            Token::Name(Cow::Borrowed("HexString")),
             Token::HexString(b"Hello, World!".to_vec()),
-            Token::Name("Reference".to_string()),
+            Token::Name(Cow::Borrowed("Reference")),
             Token::Integer(1),
             Token::Integer(0),
-            Token::Keyword("R".to_string()),
-            Token::Name("Boolean".to_string()),
-            Token::Keyword("true".to_string()),
-            Token::Name("Boolean".to_string()),
-            Token::Keyword("false".to_string()),
-            Token::Name("Null".to_string()),
-            Token::Keyword("null".to_string()),
+            Token::Keyword("R"),
+            Token::Name(Cow::Borrowed("Boolean")),
+            Token::Keyword("true"),
+            Token::Name(Cow::Borrowed("Boolean")),
+            Token::Keyword("false"),
+            Token::Name(Cow::Borrowed("Null")),
+            Token::Keyword("null"),
             Token::DictClose,
-            Token::Keyword("endobj".to_string()),
+            Token::Keyword("endobj"),
         ];
 
         let mut lexer = Lexer::new(input);
@@ -625,13 +642,13 @@ mod tests {
     #[test]
     fn test_read_name() {
         let token = lex_single_token(b"/").unwrap();
-        assert_eq!(token, Token::Name("".to_string()));
+        assert_eq!(token, Token::Name(Cow::Borrowed("")));
 
         let token = lex_single_token(b"/Name").unwrap();
-        assert_eq!(token, Token::Name("Name".to_string()));
+        assert_eq!(token, Token::Name(Cow::Borrowed("Name")));
 
         let token = lex_single_token(b"   /Name   ").unwrap();
-        assert_eq!(token, Token::Name("Name".to_string()));
+        assert_eq!(token, Token::Name(Cow::Borrowed("Name")));
 
         let token = lex_single_token(indoc!(
             b"
@@ -640,60 +657,72 @@ mod tests {
             "
         ))
         .unwrap();
-        assert_eq!(token, Token::Name("Name".to_string()));
+        assert_eq!(token, Token::Name(Cow::Borrowed("Name")));
     }
 
     #[test]
     fn test_read_name_with_escapes() {
         let token = lex_single_token(b"/Name#20Name").unwrap();
-        assert_eq!(token, Token::Name("Name Name".to_string()));
+        assert_eq!(token, Token::Name(Cow::Borrowed("Name Name")));
 
         let token = lex_single_token(b"/Name#23Name").unwrap();
-        assert_eq!(token, Token::Name("Name#Name".to_string()));
+        assert_eq!(token, Token::Name(Cow::Borrowed("Name#Name")));
 
         let token = lex_single_token(b"/Name#2eName").unwrap();
-        assert_eq!(token, Token::Name("Name.Name".to_string()));
+        assert_eq!(token, Token::Name(Cow::Borrowed("Name.Name")));
 
         let token = lex_single_token(b"/Name#28Name#29").unwrap();
-        assert_eq!(token, Token::Name("Name(Name)".to_string()));
+        assert_eq!(token, Token::Name(Cow::Borrowed("Name(Name)")));
     }
 
     #[test]
     fn test_read_name_invalid_escape() {
         match lex_single_token(b"/Name#2gName") {
             Ok(t) => panic!("Expected error, got: {:?}", t),
-            Err(e) => assert_eq!(e, PdfError::parser("Invalid escaped character sequence", 5)),
+            Err(e) => assert_eq!(e, PdfError::parser("Invalid escaped sequence", 5)),
         }
     }
 
     #[test]
     fn test_read_keyword() {
         let token = lex_single_token(b"xref").unwrap();
-        assert_eq!(token, Token::Keyword("xref".to_string()));
+        assert_eq!(token, Token::Keyword("xref"));
 
         let token = lex_single_token(b" R").unwrap();
-        assert_eq!(token, Token::Keyword("R".to_string()));
+        assert_eq!(token, Token::Keyword("R"));
     }
 
     #[test]
     fn test_read_literal_string() {
         let token = lex_single_token(b"()").unwrap();
-        assert_eq!(token, Token::LiteralString(b"".to_vec()));
+        assert_eq!(token, Token::LiteralString(Cow::Borrowed(b"")));
 
         let token = lex_single_token(b"(Hello, world!)").unwrap();
-        assert_eq!(token, Token::LiteralString(b"Hello, world!".to_vec()));
+        assert_eq!(token, Token::LiteralString(Cow::Borrowed(b"Hello, world!")));
 
         let token = lex_single_token(b"(% Hello World %)").unwrap();
-        assert_eq!(token, Token::LiteralString(b"% Hello World %".to_vec()));
+        assert_eq!(
+            token,
+            Token::LiteralString(Cow::Borrowed(b"% Hello World %"))
+        );
 
         let token = lex_single_token(br"(\n\r\t\b\f\(\)\040\\)").unwrap();
-        assert_eq!(token, Token::LiteralString(b"\n\r\t\x08\x0c() \\".to_vec()));
+        assert_eq!(
+            token,
+            Token::LiteralString(Cow::Borrowed(b"\n\r\t\x08\x0c() \\"))
+        );
 
         let token = lex_single_token(b"(Hello (New) World)").unwrap();
-        assert_eq!(token, Token::LiteralString(b"Hello (New) World".to_vec()));
+        assert_eq!(
+            token,
+            Token::LiteralString(Cow::Borrowed(b"Hello (New) World"))
+        );
 
         let token = lex_single_token(br"(Hello \(New\) World)").unwrap();
-        assert_eq!(token, Token::LiteralString(b"Hello (New) World".to_vec()));
+        assert_eq!(
+            token,
+            Token::LiteralString(Cow::Borrowed(b"Hello (New) World"))
+        );
 
         let token = lex_single_token(indoc!(
             b"
@@ -702,7 +731,8 @@ mod tests {
             "
         ))
         .unwrap();
-        assert_eq!(token, Token::LiteralString(b"Hello World".to_vec()));
+
+        assert_eq!(token, Token::LiteralString(Cow::Borrowed(b"Hello World")));
     }
 
     #[test]

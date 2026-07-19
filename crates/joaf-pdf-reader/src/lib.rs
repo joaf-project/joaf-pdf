@@ -1,4 +1,4 @@
-use joaf_pdf_core::{ObjectId, PdfError, PdfObject, PdfObjectsMap};
+use joaf_pdf_core::{PdfError, PdfObject, PdfObjectsMap};
 use joaf_pdf_dom::{Catalog, Document, Page, Trailer};
 use joaf_pdf_parser::PdfParser;
 
