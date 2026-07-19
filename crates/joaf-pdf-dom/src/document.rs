@@ -2,15 +2,15 @@ use joaf_pdf_core::{PdfDictionary, PdfError, PdfObjectsMap, XrefTable};
 
 use crate::{Catalog, Trailer};
 
-pub struct Document {
+pub struct Document<'a> {
     pub version: String,
-    pub catalog: Catalog,
+    pub catalog: Catalog<'a>,
     pub trailer: Trailer,
     pub xref_table: XrefTable,
-    pub objects: PdfObjectsMap,
+    pub objects: PdfObjectsMap<'a>,
 }
 
-impl Document {
+impl<'a> Document<'a> {
     pub fn try_new(
         version: String,
         trailer_dict: &PdfDictionary,

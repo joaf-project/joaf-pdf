@@ -1,5 +1,5 @@
 use joaf_pdf_core::{
-    ObjectId, PDF_FALSE, PDF_NULL, PDF_TRUE, PdfArray, PdfDictionary, PdfError, PdfObject,
+    ObjectId, PDF_FALSE, PDF_NULL, PDF_TRUE, PdfArray, PdfDictionary, PdfError, PdfName, PdfObject,
     PdfStream, PdfString, XrefEntry, XrefTable,
 };
 
@@ -9,7 +9,7 @@ pub struct PdfParser<'a> {
     pub lexer: Lexer<'a>,
     pub version: String,
     pub xref_table: XrefTable,
-    pub trailer_dict: PdfDictionary,
+    pub trailer_dict: PdfDictionary<'a>,
 }
 
 impl<'a> PdfParser<'a> {
@@ -38,7 +38,7 @@ impl<'a> PdfParser<'a> {
         &mut self,
         id: u32,
         generation: u16,
-    ) -> Result<PdfObject, PdfError> {
+    ) -> Result<PdfObject<'a>, PdfError> {
         let entry = self
             .xref_table
             .get(&id)
@@ -60,19 +60,19 @@ impl<'a> PdfParser<'a> {
         }
     }
 
-    pub fn parse_object_at(&mut self, position: usize) -> Result<PdfObject, PdfError> {
-        let saved_pos = self.lexer.pos;
-        self.lexer.pos = position;
+    pub fn parse_object_at(&mut self, position: usize) -> Result<PdfObject<'a>, PdfError> {
+        let saved_pos = self.lexer.get_position();
+        self.lexer.set_position(position);
         let obj = self.parse_object();
-        self.lexer.pos = saved_pos;
+        self.lexer.set_position(saved_pos);
         return obj;
     }
 
-    pub fn parse_object(&mut self) -> Result<PdfObject, PdfError> {
+    pub fn parse_object(&mut self) -> Result<PdfObject<'a>, PdfError> {
         let token = self.lexer.next_token()?;
 
         match token {
-            Token::Name(name) => Ok(PdfObject::Name(name.to_string())),
+            Token::Name(name) => Ok(PdfObject::Name(PdfName::from(name))),
             Token::Integer(i) => {
                 let pos = self.lexer.pos;
 
@@ -119,7 +119,7 @@ impl<'a> PdfParser<'a> {
         }
     }
 
-    pub fn parse_trailer(&mut self) -> Result<(XrefTable, PdfDictionary), PdfError> {
+    pub fn parse_trailer(&mut self) -> Result<(XrefTable, PdfDictionary<'a>), PdfError> {
         const EOF_MARKER: &[u8] = b"%%EOF";
         const START_XREF: &[u8] = b"startxref";
 
@@ -250,8 +250,8 @@ impl<'a> PdfParser<'a> {
         Ok(xref_table)
     }
 
-    fn parse_array(&mut self) -> Result<PdfObject, PdfError> {
-        let mut array: Vec<PdfObject> = Vec::new();
+    fn parse_array(&mut self) -> Result<PdfObject<'a>, PdfError> {
+        let mut array: Vec<PdfObject<'a>> = Vec::new();
         loop {
             let token = self.lexer.peek_token()?;
             match token {
@@ -266,7 +266,7 @@ impl<'a> PdfParser<'a> {
         }
     }
 
-    fn parse_dict_or_stream(&mut self) -> Result<PdfObject, PdfError> {
+    fn parse_dict_or_stream(&mut self) -> Result<PdfObject<'a>, PdfError> {
         let mut dict = PdfDictionary::new();
         loop {
             let token = self.lexer.next_token()?;
@@ -305,11 +305,11 @@ impl<'a> PdfParser<'a> {
 #[cfg(test)]
 mod tests {
     use indoc::indoc;
-    use joaf_pdf_core::PdfArray;
+    use joaf_pdf_core::{PdfArray, PdfName};
 
     use super::*;
 
-    fn parse_single_object(input: &[u8]) -> Result<PdfObject, PdfError> {
+    fn parse_single_object(input: &[u8]) -> Result<PdfObject<'_>, PdfError> {
         let mut parser = PdfParser::new(input);
         parser.parse_object()
     }
@@ -506,7 +506,7 @@ mod tests {
         .unwrap();
 
         let mut expected = PdfDictionary::new();
-        expected.insert("Type".to_string(), PdfObject::Name("Page".to_string()));
+        expected.insert("Type".to_string(), PdfObject::Name(PdfName::PAGE));
 
         assert_eq!(token, PdfObject::Dictionary(expected));
 
@@ -541,7 +541,7 @@ mod tests {
         .unwrap();
 
         let mut expected_obj = PdfDictionary::new();
-        expected_obj.insert("Type".to_string(), PdfObject::Name("Page".to_string()));
+        expected_obj.insert("Type".to_string(), PdfObject::Name(PdfName::PAGE));
 
         let expected = PdfObject::IndirectObject(
             ObjectId {
@@ -651,8 +651,8 @@ mod tests {
         expected_dict.insert(
             "Filter".to_string(),
             PdfObject::Array(PdfArray::from_vec(vec![
-                PdfObject::Name("ASCII85Decode".to_string()),
-                PdfObject::Name("LZWDecode".to_string()),
+                PdfObject::Name(PdfName::from("ASCII85Decode")),
+                PdfObject::Name(PdfName::from("LZWDecode")),
             ])),
         );
 

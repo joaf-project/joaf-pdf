@@ -7,10 +7,10 @@ pub struct Rect {
     pub height: u32,
 }
 
-pub struct Page {
+pub struct Page<'a> {
     pub media_box: Rect,
-    pub contents: PdfObject,
-    pub resources: PdfDictionary,
+    pub contents: PdfObject<'a>,
+    pub resources: PdfDictionary<'a>,
 }
 
 impl Rect {
@@ -30,9 +30,9 @@ impl Rect {
     }
 }
 
-impl Page {
-    pub fn from_dict(dict: &PdfDictionary) -> Result<Self, PdfError> {
-        if dict.get_required("Type")?.to_name()? != "Page" {
+impl<'a> Page<'a> {
+    pub fn from_dict(dict: &PdfDictionary<'a>) -> Result<Self, PdfError> {
+        if dict.get_required("Type")?.to_name()?.str != "Page" {
             return Err(PdfError::from("Type is not a Page."));
         }
 

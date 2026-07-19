@@ -30,6 +30,14 @@ impl<'a> Lexer<'a> {
         Lexer { input, pos: 0 }
     }
 
+    pub fn get_position(&self) -> usize {
+        self.pos
+    }
+
+    pub fn set_position(&mut self, pos: usize) {
+        self.pos = pos;
+    }
+
     pub fn peek_token(&mut self) -> Result<Token<'a>, PdfError> {
         let pos = self.pos;
         let token = self.next_token()?;

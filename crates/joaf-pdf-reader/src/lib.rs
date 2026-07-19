@@ -13,7 +13,7 @@ impl<'a> PdfMemoryReader<'a> {
         }
     }
 
-    pub fn read(&mut self) -> Result<Document, PdfError> {
+    pub fn read(&mut self) -> Result<Document<'a>, PdfError> {
         let mut objects = PdfObjectsMap::new();
 
         self.parser.parse_structure()?;
@@ -48,7 +48,7 @@ impl<'a> PdfMemoryReader<'a> {
 
         let root_dict = doc.objects.get(&doc.trailer.root).to_dict()?;
 
-        if root_dict.get_required("Type")?.to_name()? != "Catalog" {
+        if root_dict.get_required("Type")?.to_name()?.str != "Catalog" {
             return Err(PdfError::from("Root dictionary is not a catalog."));
         }
 
@@ -56,7 +56,7 @@ impl<'a> PdfMemoryReader<'a> {
             .get_required("Pages")?
             .deref(&doc.objects)
             .to_dict()?;
-        if pages_dict.get_required("Type")?.to_name()? != "Pages" {
+        if pages_dict.get_required("Type")?.to_name()?.str != "Pages" {
             return Err(PdfError::from("Pages dictionary is not a Pages."));
         }
 

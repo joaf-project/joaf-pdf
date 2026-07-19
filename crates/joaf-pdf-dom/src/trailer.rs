@@ -5,7 +5,7 @@ pub struct Trailer {
     pub root: ObjectId,
 }
 
-impl TryFrom<&PdfDictionary> for Trailer {
+impl<'a> TryFrom<&PdfDictionary<'a>> for Trailer {
     type Error = PdfError;
 
     fn try_from(value: &PdfDictionary) -> Result<Self, Self::Error> {

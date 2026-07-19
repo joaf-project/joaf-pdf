@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
 use crate::PdfError;
 
@@ -28,13 +28,18 @@ pub struct XrefEntry {
 pub type XrefTable = BTreeMap<u32, XrefEntry>;
 
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct PdfArray {
-    pub items: Vec<PdfObject>,
+pub struct PdfArray<'a> {
+    pub items: Vec<PdfObject<'a>>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct PdfDictionary {
-    dict: BTreeMap<String, PdfObject>,
+pub struct PdfDictionary<'a> {
+    dict: BTreeMap<String, PdfObject<'a>>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+pub struct PdfName<'a> {
+    pub str: Cow<'a, str>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -43,33 +48,33 @@ pub struct PdfString {
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct PdfStream {
-    pub entries: PdfDictionary,
+pub struct PdfStream<'a> {
+    pub entries: PdfDictionary<'a>,
     pub offset: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum PdfObject {
+pub enum PdfObject<'a> {
     Null,
     Boolean(bool),
     Integer(i64),
     Real(f64),
     String(PdfString),
-    Name(String),
-    Array(PdfArray),
-    Dictionary(PdfDictionary),
-    Stream(PdfStream),
+    Name(PdfName<'a>),
+    Array(PdfArray<'a>),
+    Dictionary(PdfDictionary<'a>),
+    Stream(PdfStream<'a>),
     Reference(ObjectId),
-    IndirectObject(ObjectId, Box<PdfObject>),
+    IndirectObject(ObjectId, Box<PdfObject<'a>>),
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct PdfObjectsMap {
-    map: BTreeMap<ObjectId, PdfObject>,
+pub struct PdfObjectsMap<'a> {
+    map: BTreeMap<ObjectId, PdfObject<'a>>,
 }
 
-impl PdfObject {
-    pub fn deref<'a: 'b, 'b>(&'a self, objects: &'b PdfObjectsMap) -> &'b PdfObject {
+impl<'a> PdfObject<'a> {
+    pub fn deref<'b>(&'b self, objects: &'b PdfObjectsMap<'a>) -> &'b PdfObject<'a> {
         match self {
             PdfObject::IndirectObject(_, obj) => obj.as_ref(),
             PdfObject::Reference(id) => objects.get(id),
@@ -98,28 +103,28 @@ impl PdfObject {
         }
     }
 
-    pub fn to_name(&self) -> Result<&str, PdfError> {
+    pub fn to_name(&self) -> Result<&PdfName<'a>, PdfError> {
         match self {
-            PdfObject::Name(s) => Ok(s.as_str()),
+            PdfObject::Name(n) => Ok(n),
             _ => Err(PdfError::type_mismatch("Name", self.str_type())),
         }
     }
 
-    pub fn to_array(&self) -> Result<&PdfArray, PdfError> {
+    pub fn to_array(&self) -> Result<&PdfArray<'a>, PdfError> {
         match self {
             PdfObject::Array(a) => Ok(a),
             _ => Err(PdfError::type_mismatch("Array", self.str_type())),
         }
     }
 
-    pub fn to_dict(&self) -> Result<&PdfDictionary, PdfError> {
+    pub fn to_dict(&self) -> Result<&PdfDictionary<'a>, PdfError> {
         match self {
             PdfObject::Dictionary(dict) => Ok(dict),
             _ => Err(PdfError::type_mismatch("Dictionary", self.str_type())),
         }
     }
 
-    pub fn to_stream(&self) -> Result<&PdfStream, PdfError> {
+    pub fn to_stream(&self) -> Result<&PdfStream<'a>, PdfError> {
         match self {
             PdfObject::Stream(stream) => Ok(stream),
             _ => Err(PdfError::type_mismatch("Stream", self.str_type())),
@@ -133,7 +138,7 @@ impl PdfObject {
         }
     }
 
-    pub fn to_indirect(&self) -> Result<(&ObjectId, &PdfObject), PdfError> {
+    pub fn to_indirect(&self) -> Result<(&ObjectId, &PdfObject<'a>), PdfError> {
         match self {
             PdfObject::IndirectObject(id, obj) => Ok((id, obj.as_ref())),
             _ => Err(PdfError::type_mismatch("IndirectObject", self.str_type())),
@@ -157,32 +162,32 @@ impl PdfObject {
     }
 }
 
-impl PdfArray {
+impl<'a> PdfArray<'a> {
     pub fn new() -> Self {
         Self { items: Vec::new() }
     }
 
-    pub fn from_vec(items: Vec<PdfObject>) -> Self {
+    pub fn from_vec(items: Vec<PdfObject<'a>>) -> Self {
         Self { items }
     }
 }
 
-impl PdfDictionary {
+impl<'a> PdfDictionary<'a> {
     pub fn new() -> Self {
         Self {
             dict: BTreeMap::new(),
         }
     }
 
-    pub fn insert(&mut self, key: String, value: PdfObject) {
+    pub fn insert(&mut self, key: String, value: PdfObject<'a>) {
         self.dict.insert(key, value);
     }
 
-    pub fn get(&self, key: &str) -> Option<&PdfObject> {
+    pub fn get(&self, key: &str) -> Option<&PdfObject<'a>> {
         self.dict.get(key)
     }
 
-    pub fn get_required(&self, key: &str) -> Result<&PdfObject, PdfError> {
+    pub fn get_required(&self, key: &str) -> Result<&PdfObject<'a>, PdfError> {
         match self.dict.get(key) {
             Some(obj) => Ok(obj),
             None => Err(PdfError::missing_required_key(key)),
@@ -190,24 +195,47 @@ impl PdfDictionary {
     }
 }
 
-impl PdfStream {
-    pub fn new(entries: PdfDictionary, offset: usize) -> Self {
+impl<'a> From<&'a str> for PdfName<'a> {
+    fn from(s: &'a str) -> Self {
+        Self {
+            str: Cow::Borrowed(s),
+        }
+    }
+}
+
+impl<'a> From<Cow<'a, str>> for PdfName<'a> {
+    fn from(s: Cow<'a, str>) -> Self {
+        Self { str: s }
+    }
+}
+
+impl<'a> PdfName<'a> {
+    pub const PAGE: PdfName<'static> = PdfName {
+        str: Cow::Borrowed("Page"),
+    };
+    pub const TYPE: PdfName<'static> = PdfName {
+        str: Cow::Borrowed("Type"),
+    };
+}
+
+impl<'a> PdfStream<'a> {
+    pub fn new(entries: PdfDictionary<'a>, offset: usize) -> Self {
         Self { entries, offset }
     }
 }
 
-impl PdfObjectsMap {
+impl<'a> PdfObjectsMap<'a> {
     pub fn new() -> Self {
         Self {
             map: BTreeMap::new(),
         }
     }
 
-    pub fn insert(&mut self, object_id: ObjectId, obj_ref: PdfObject) {
+    pub fn insert(&mut self, object_id: ObjectId, obj_ref: PdfObject<'a>) {
         self.map.insert(object_id, obj_ref);
     }
 
-    pub fn get(&self, object_id: &ObjectId) -> &PdfObject {
+    pub fn get(&self, object_id: &ObjectId) -> &PdfObject<'a> {
         match self.map.get(object_id) {
             Some(obj_ref) => obj_ref,
             None => &PDF_NULL,
