@@ -1,7 +1,4 @@
-use joaf_pdf_core::{
-    ObjectId, PDF_FALSE, PDF_NULL, PDF_TRUE, PdfArray, PdfDictionary, PdfError, PdfName, PdfObject,
-    PdfStream, PdfString, XrefEntry, XrefTable,
-};
+use joaf_pdf_core::*;
 
 use crate::lexer::{Lexer, Token};
 
@@ -108,9 +105,9 @@ impl<'a> PdfParser<'a> {
             Token::LiteralString(s) => Ok(PdfObject::String(PdfString { bytes: s })),
             Token::HexString(s) => Ok(PdfObject::String(PdfString { bytes: s })),
             Token::Keyword(kw) => match kw {
-                "true" => Ok(PDF_TRUE),
-                "false" => Ok(PDF_FALSE),
-                "null" => Ok(PDF_NULL),
+                "true" => Ok(PdfObject::TRUE),
+                "false" => Ok(PdfObject::FALSE),
+                "null" => Ok(PdfObject::NULL),
                 _ => Err(PdfError::from("Invalid token.")),
             },
             Token::BracketOpen => Ok(self.parse_array()?),
