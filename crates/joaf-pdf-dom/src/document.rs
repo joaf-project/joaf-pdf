@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 
-use joaf_pdf_core::{PdfDictionary, XrefEntry};
+use joaf_pdf_core::{PdfObject, XrefEntry};
 
 use crate::PdfCatalog;
 
 pub struct PdfDocument {
     pub version: String,
     pub catalog: PdfCatalog,
-    pub trailer: PdfDictionary,
+    pub trailer: BTreeMap<String, PdfObject>,
     pub xref_table: BTreeMap<u32, XrefEntry>,
 }
 
@@ -16,7 +16,7 @@ impl PdfDocument {
         Self {
             version: String::new(),
             catalog: PdfCatalog::new(),
-            trailer: PdfDictionary::new(),
+            trailer: BTreeMap::new(),
             xref_table: BTreeMap::new(),
         }
     }
