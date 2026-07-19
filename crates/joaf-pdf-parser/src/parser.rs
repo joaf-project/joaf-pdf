@@ -7,12 +7,18 @@ use crate::lexer::{Lexer, Token};
 
 pub struct PdfParser<'a> {
     pub lexer: Lexer<'a>,
+    pub version: String,
+    pub xref_table: XrefTable,
+    pub trailer_dict: PdfDictionary,
 }
 
 impl<'a> PdfParser<'a> {
     pub fn new(input: &'a [u8]) -> Self {
         PdfParser {
             lexer: Lexer::new(input),
+            version: String::new(),
+            xref_table: XrefTable::new(),
+            trailer_dict: PdfDictionary::new(),
         }
     }
 
@@ -20,9 +26,46 @@ impl<'a> PdfParser<'a> {
         self.lexer.pos = pos;
     }
 
-    pub fn parse_object_at(&mut self, position: u64) -> Result<PdfObject, PdfError> {
-        self.set_position(position as usize);
-        self.parse_object()
+    pub fn parse_structure(&mut self) -> Result<(), PdfError> {
+        self.version = self.parse_version()?;
+        let (xref_table, trailer_dict) = self.parse_trailer()?;
+        self.xref_table = xref_table;
+        self.trailer_dict = trailer_dict;
+        Ok(())
+    }
+
+    pub fn parse_indirect_object(
+        &mut self,
+        id: u32,
+        generation: u16,
+    ) -> Result<PdfObject, PdfError> {
+        let entry = self
+            .xref_table
+            .get(&id)
+            .ok_or_else(|| PdfError::invalid_reference(id, generation))?;
+
+        if let PdfObject::IndirectObject(object_id, object) =
+            self.parse_object_at(entry.byte_offset)?
+        {
+            if object_id.id != id || object_id.generation != generation {
+                return Err(PdfError::invalid_reference(
+                    object_id.id,
+                    object_id.generation,
+                ));
+            }
+
+            Ok(*object)
+        } else {
+            Err(PdfError::invalid_reference(id, generation))
+        }
+    }
+
+    pub fn parse_object_at(&mut self, position: usize) -> Result<PdfObject, PdfError> {
+        let saved_pos = self.lexer.pos;
+        self.lexer.pos = position;
+        let obj = self.parse_object();
+        self.lexer.pos = saved_pos;
+        return obj;
     }
 
     pub fn parse_object(&mut self) -> Result<PdfObject, PdfError> {
@@ -45,18 +88,13 @@ impl<'a> PdfParser<'a> {
                             }
                             "obj" => {
                                 let obj = self.parse_object()?;
-                                if let Token::Keyword(kw) = self.lexer.next_token()? {
-                                    if kw == "endobj" {
-                                        return Ok(PdfObject::IndirectObject(
-                                            ObjectId {
-                                                id: i as u32,
-                                                generation: generation as u16,
-                                            },
-                                            Box::new(obj),
-                                        ));
-                                    }
-                                }
-                                return Err(PdfError::from("Invalid token."));
+                                return Ok(PdfObject::IndirectObject(
+                                    ObjectId {
+                                        id: i as u32,
+                                        generation: generation as u16,
+                                    },
+                                    Box::new(obj),
+                                ));
                             }
                             _ => {}
                         }
@@ -133,6 +171,23 @@ impl<'a> PdfParser<'a> {
         }
     }
 
+    fn parse_version(&mut self) -> Result<String, PdfError> {
+        if !self.lexer.input.starts_with(b"%PDF-") {
+            return Err(PdfError::from("No %PDF- header found."));
+        }
+
+        let mut version = String::new();
+        for b in self.lexer.input[5..].iter() {
+            match b {
+                b'0'..=b'9' => version.push(*b as char),
+                b'.' => version.push(*b as char),
+                _ => break,
+            }
+        }
+
+        Ok(version)
+    }
+
     fn parse_xref_table(&mut self) -> Result<XrefTable, PdfError> {
         if let Token::Keyword(kw) = self.lexer.next_token()? {
             if kw != "xref" {
@@ -160,18 +215,18 @@ impl<'a> PdfParser<'a> {
         let mut xref_table = XrefTable::new();
 
         for section_index in 0..section_count {
-            let position: u32;
-            let generation: u32;
+            let position: usize;
+            let generation: u16;
             let keyword: &str;
 
             if let Token::Integer(value) = self.lexer.next_token()? {
-                position = value as u32;
+                position = value as usize;
             } else {
                 return Err(PdfError::from("Invalid xref table."));
             }
 
             if let Token::Integer(value) = self.lexer.next_token()? {
-                generation = value as u32;
+                generation = value as u16;
             } else {
                 return Err(PdfError::from("Invalid xref table."));
             }
@@ -185,7 +240,7 @@ impl<'a> PdfParser<'a> {
             xref_table.insert(
                 section_start + section_index,
                 XrefEntry {
-                    byte_offset: position as u64,
+                    byte_offset: position as usize,
                     generation: generation as u16,
                     in_use: keyword == "n",
                 },
@@ -228,18 +283,10 @@ impl<'a> PdfParser<'a> {
                                 "stream" => {
                                     self.lexer.next_token()?; // discard "stream" token
                                     self.lexer.skip_optional_newline()?;
-                                    let len = dict.get_required("Length")?.to_integer()? as usize;
-                                    let stream_data = self.lexer.consume_bytes(len)?;
-                                    self.lexer.skip_optional_newline()?;
-                                    if let Token::Keyword(kw) = self.lexer.require_token()? {
-                                        if kw == "endstream" {
-                                            return Ok(PdfObject::Stream(PdfStream::new(
-                                                dict,
-                                                stream_data.to_vec(),
-                                            )));
-                                        }
-                                    }
-                                    return Err(PdfError::from("Invalid token."));
+                                    return Ok(PdfObject::Stream(PdfStream::new(
+                                        dict,
+                                        self.lexer.pos,
+                                    )));
                                 }
                                 _ => {}
                             }
@@ -526,7 +573,7 @@ mod tests {
         let mut expected_dict = PdfDictionary::new();
         expected_dict.insert("Length".to_string(), PdfObject::Integer(0));
 
-        let expected_obj = PdfStream::new(expected_dict, Vec::new());
+        let expected_obj = PdfStream::new(expected_dict, 53);
 
         let expected = PdfObject::IndirectObject(
             ObjectId {
@@ -559,7 +606,7 @@ mod tests {
         let mut expected_dict = PdfDictionary::new();
         expected_dict.insert("Length".to_string(), PdfObject::Integer(13));
 
-        let expected_obj = PdfStream::new(expected_dict, b"simple stream".to_vec());
+        let expected_obj = PdfStream::new(expected_dict, 54);
 
         let expected = PdfObject::IndirectObject(
             ObjectId {
@@ -599,23 +646,6 @@ mod tests {
         ))
         .unwrap();
 
-        const STREAM_BYTES: &[u8] = indoc!(
-            br##"
-            J..)6T`?p&<!J9%_[umg"B7/Z7KNXbN'S+,*Q/&"OLT'F
-            LIDK#!n`$"<Atdi`\Vn%b%)&'cA*VnK\CJY(sF>c!Jnl@
-            RM]WM;jjH6Gnc75idkL5]+cPZKEBPWdR>FF(kj1_R%W_d
-            &/jS!;iuad7h?[L-F$+]]0A3Ck*$I0KZ?;<)CJtqi65Xb
-            Vc3\n5ua:Q/=0$W<#N3U;H,MQKqfg1?:lUpR;6oN[C2E4
-            ZNr8Udn.'p+?#X+1>0Kuk$bCDF/(3fL5]Oq)^kJZ!C2H1
-            'TO]Rl?Q:&'<5&iP!$Rq;BXRecDN[IJB`,)o8XJOSJ9sD
-            S]hQ;Rj@!ND)bD_q&C\g:inYC%)&u#:u,M6Bm%IY!Kb1+
-            ":aAa'S`ViJglLb8<W9k6Yl\\0McJQkDeLWdPN?9A'jX*
-            al>iG1p&i;eVoK&juJHs9%;Xomop"5KatWRT"JQ#qYuL,
-            JD?M$0QP)lKn06l1apKDC@\qJ4B!!(5m+j.7F790m(Vj8
-            8l8Q:_CZ(Gm1%X\N1&u!FKHMB~>
-            "##
-        );
-
         let mut expected_dict = PdfDictionary::new();
         expected_dict.insert("Length".to_string(), PdfObject::Integer(534));
         expected_dict.insert(
@@ -631,10 +661,7 @@ mod tests {
                 id: 1,
                 generation: 0,
             },
-            Box::new(PdfObject::Stream(PdfStream::new(
-                expected_dict,
-                STREAM_BYTES.to_vec(),
-            ))),
+            Box::new(PdfObject::Stream(PdfStream::new(expected_dict, 84))),
         );
 
         assert_eq!(token, expected);

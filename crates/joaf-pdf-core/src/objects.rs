@@ -6,7 +6,7 @@ pub const PDF_NULL: PdfObject = PdfObject::Null;
 pub const PDF_TRUE: PdfObject = PdfObject::Boolean(true);
 pub const PDF_FALSE: PdfObject = PdfObject::Boolean(false);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ObjectId {
     pub id: u32,
     pub generation: u16,
@@ -20,7 +20,7 @@ impl ObjectId {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct XrefEntry {
-    pub byte_offset: u64,
+    pub byte_offset: usize,
     pub generation: u16,
     pub in_use: bool,
 }
@@ -45,7 +45,7 @@ pub struct PdfString {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct PdfStream {
     pub entries: PdfDictionary,
-    pub data: Vec<u8>,
+    pub offset: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -66,22 +66,6 @@ pub enum PdfObject {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct PdfObjectsMap {
     map: BTreeMap<ObjectId, PdfObject>,
-}
-
-impl PartialOrd for ObjectId {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for ObjectId {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        if self.id != other.id {
-            self.id.cmp(&other.id)
-        } else {
-            self.generation.cmp(&other.generation)
-        }
-    }
 }
 
 impl PdfObject {
@@ -207,8 +191,8 @@ impl PdfDictionary {
 }
 
 impl PdfStream {
-    pub fn new(entries: PdfDictionary, data: Vec<u8>) -> Self {
-        Self { entries, data }
+    pub fn new(entries: PdfDictionary, offset: usize) -> Self {
+        Self { entries, offset }
     }
 }
 

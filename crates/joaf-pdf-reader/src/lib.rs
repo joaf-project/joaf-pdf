@@ -14,10 +14,11 @@ impl<'a> PdfMemoryReader<'a> {
     }
 
     pub fn read(&mut self) -> Result<Document, PdfError> {
-        let version = self.read_version()?;
-        let (xref_table, trailer_dict) = self.parser.parse_trailer()?;
-
         let mut objects = PdfObjectsMap::new();
+
+        self.parser.parse_structure()?;
+
+        let xref_table = self.parser.xref_table.clone();
 
         for (id, entry) in xref_table.iter() {
             if let PdfObject::IndirectObject(object_id, object) =
@@ -28,8 +29,8 @@ impl<'a> PdfMemoryReader<'a> {
                 }
 
                 if object_id.id != *id || object_id.generation != entry.generation {
-                    return Err(PdfError::invalid_reference(&format!(
-                        "Invalid object id or generation: {}:{} != {}:{}",
+                    return Err(PdfError::from(format!(
+                        "Object and xref reference mismatch: {}:{} != {}:{}",
                         object_id.id, object_id.generation, id, entry.generation
                     )));
                 }
@@ -38,7 +39,11 @@ impl<'a> PdfMemoryReader<'a> {
             }
         }
 
-        let mut doc = Document::try_new(version, &trailer_dict, xref_table)?;
+        let mut doc = Document::try_new(
+            self.parser.version.clone(),
+            &self.parser.trailer_dict,
+            xref_table,
+        )?;
         doc.objects = objects;
 
         let root_dict = doc.objects.get(&doc.trailer.root).to_dict()?;
@@ -65,7 +70,7 @@ impl<'a> PdfMemoryReader<'a> {
 
         for page_id_obj in page_ids.items.iter() {
             let page_dict = page_id_obj.deref(&doc.objects).to_dict()?;
-            let page = Page::from_dict(&page_dict)?;
+            let page = Page::from_dict(page_dict)?;
             doc.catalog.pages.push(page);
         }
 
@@ -75,23 +80,6 @@ impl<'a> PdfMemoryReader<'a> {
         }
 
         Ok(doc)
-    }
-
-    fn read_version(&mut self) -> Result<String, PdfError> {
-        if !self.parser.lexer.input.starts_with(b"%PDF-") {
-            return Err(PdfError::from("No %PDF- header found."));
-        }
-
-        let mut version = String::new();
-        for b in self.parser.lexer.input[5..].iter() {
-            match b {
-                b'0'..=b'9' => version.push(*b as char),
-                b'.' => version.push(*b as char),
-                _ => break,
-            }
-        }
-
-        Ok(version)
     }
 }
 

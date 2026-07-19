@@ -68,9 +68,9 @@ impl PdfError {
         }
     }
 
-    pub fn invalid_reference(key: &str) -> Self {
+    pub fn invalid_reference(id: u32, generation: u16) -> Self {
         Self {
-            message: format!("Invalid Reference: {}", key),
+            message: format!("Invalid object id or generation: {}:{}", id, generation),
         }
     }
 
