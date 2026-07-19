@@ -216,7 +216,7 @@ impl<'a> Lexer<'a> {
         let end = self.pos;
 
         let raw_bytes = &self.input[start..end];
-        let raw_str = std::str::from_utf8(raw_bytes).map_err(PdfError::from_utf8_error)?;
+        let raw_str = std::str::from_utf8(raw_bytes).map_err(PdfError::from)?;
 
         if !has_escapes {
             Ok(Token::Name(Cow::Borrowed(raw_str)))
@@ -227,8 +227,8 @@ impl<'a> Lexer<'a> {
             while i < end {
                 let b = self.input[i];
                 if b == b'#' && i + 2 < end {
-                    let hex_str = std::str::from_utf8(&self.input[i + 1..i + 3])
-                        .map_err(PdfError::from_utf8_error)?;
+                    let hex_str =
+                        std::str::from_utf8(&self.input[i + 1..i + 3]).map_err(PdfError::from)?;
                     let val = u8::from_str_radix(hex_str, 16)
                         .map_err(|_| PdfError::parser("Invalid escaped sequence", i))?;
                     name.push(val as char);

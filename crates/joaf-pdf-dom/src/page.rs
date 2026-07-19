@@ -18,7 +18,7 @@ impl Rect {
         let arr = obj.to_array()?;
 
         if arr.items.len() != 4 {
-            return Err(PdfError::new("MediaBox is not an array of 4 elements."));
+            return Err(PdfError::from("MediaBox is not an array of 4 elements."));
         }
 
         Ok(Self {
@@ -33,7 +33,7 @@ impl Rect {
 impl<'a> Page<'a> {
     pub fn from_dict(dict: &'a PdfDictionary) -> Result<Self, PdfError> {
         if dict.get("Type")?.to_name()? != "Page" {
-            return Err(PdfError::new("Type is not a Page."));
+            return Err(PdfError::from("Type is not a Page."));
         }
 
         let media_box = Rect::from_obj(dict.get("MediaBox")?)?;

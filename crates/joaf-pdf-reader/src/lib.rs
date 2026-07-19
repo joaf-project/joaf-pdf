@@ -45,18 +45,18 @@ impl<'a> PdfMemoryReader<'a> {
         let root_dict = self.objects.get(&trailer.root).to_dict()?;
 
         if root_dict.get("Type")?.to_name()? != "Catalog" {
-            return Err(PdfError::new("Root dictionary is not a catalog."));
+            return Err(PdfError::from("Root dictionary is not a catalog."));
         }
 
         let pages_dict = root_dict.get("Pages")?.deref(&self.objects).to_dict()?;
         if pages_dict.get("Type")?.to_name()? != "Pages" {
-            return Err(PdfError::new("Pages dictionary is not a Pages."));
+            return Err(PdfError::from("Pages dictionary is not a Pages."));
         }
 
         let page_count = pages_dict.get("Count")?.to_integer()? as usize;
         let page_ids = pages_dict.get("Kids")?.to_array()?;
         if page_count != page_ids.items.len() {
-            return Err(PdfError::new(
+            return Err(PdfError::from(
                 "Page count does not match the number of kids.",
             ));
         }
@@ -82,7 +82,7 @@ impl<'a> PdfMemoryReader<'a> {
 
     fn read_version(&mut self) -> Result<String, PdfError> {
         if !self.parser.lexer.input.starts_with(b"%PDF-") {
-            return Err(PdfError::new("No %PDF- header found."));
+            return Err(PdfError::from("No %PDF- header found."));
         }
 
         let mut version = String::new();
@@ -108,10 +108,10 @@ mod tests {
     #[test]
     fn load_sample_pdf14_mmap_test() -> Result<(), PdfError> {
         let mmap = MemoryMappedFile::open_ro("../../tests/data/minimal_pdf_1_4.pdf")
-            .map_err(|err| PdfError::new(&format!("Failed to open memory mapped file: {}", err)))?;
+            .map_err(|err| PdfError::from(format!("Failed to open memory mapped file: {}", err)))?;
         let bytes = &mmap
             .as_slice(0, mmap.len())
-            .map_err(|err| PdfError::new(&format!("Failed to open memory mapped file: {}", err)))?;
+            .map_err(|err| PdfError::from(format!("Failed to open memory mapped file: {}", err)))?;
         let mut pdf_reader = PdfMemoryReader::new(bytes);
         let document = pdf_reader.read()?;
 
@@ -128,10 +128,9 @@ mod tests {
     #[test]
     fn load_sample_pdf14_test() -> Result<(), PdfError> {
         let mut file =
-            File::open("../../tests/data/minimal_pdf_1_4.pdf").map_err(PdfError::from_io_error)?;
+            File::open("../../tests/data/minimal_pdf_1_4.pdf").map_err(PdfError::from)?;
         let mut buf: Vec<u8> = Vec::new();
-        file.read_to_end(&mut buf)
-            .map_err(PdfError::from_io_error)?;
+        file.read_to_end(&mut buf).map_err(PdfError::from)?;
         let mut pdf_reader = PdfMemoryReader::new(&buf);
         let document = pdf_reader.read()?;
 

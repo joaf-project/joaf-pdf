@@ -56,7 +56,7 @@ impl<'a> PdfParser<'a> {
                                         ));
                                     }
                                 }
-                                return Err(PdfError::new("Invalid token."));
+                                return Err(PdfError::from("Invalid token."));
                             }
                             _ => {}
                         }
@@ -68,23 +68,22 @@ impl<'a> PdfParser<'a> {
             }
             Token::Real(r) => Ok(PdfObject::Real(r)),
             Token::LiteralString(s) => {
-                let decoded =
-                    String::from_utf8(s.into()).map_err(PdfError::from_from_utf8_error)?;
+                let decoded = String::from_utf8(s.into()).map_err(PdfError::from)?;
                 Ok(PdfObject::String(decoded))
             }
             Token::HexString(s) => {
-                let decoded = String::from_utf8(s).map_err(PdfError::from_from_utf8_error)?;
+                let decoded = String::from_utf8(s).map_err(PdfError::from)?;
                 Ok(PdfObject::String(decoded))
             }
             Token::Keyword(kw) => match kw {
                 "true" => Ok(PDF_TRUE),
                 "false" => Ok(PDF_FALSE),
                 "null" => Ok(PDF_NULL),
-                _ => Err(PdfError::new("Invalid token.")),
+                _ => Err(PdfError::from("Invalid token.")),
             },
             Token::BracketOpen => Ok(self.parse_array()?),
             Token::DictOpen => Ok(self.parse_dict_or_stream()?),
-            _ => Err(PdfError::new("Invalid token.")),
+            _ => Err(PdfError::from("Invalid token.")),
         }
     }
 
@@ -97,56 +96,56 @@ impl<'a> PdfParser<'a> {
             .input
             .windows(EOF_MARKER.len())
             .rposition(|window| window == EOF_MARKER)
-            .ok_or(PdfError::new("No %%EOF marker found."))?;
+            .ok_or(PdfError::from("No %%EOF marker found."))?;
 
         let position = self.lexer.input[..position]
             .windows(START_XREF.len())
             .rposition(|window| window == START_XREF)
-            .ok_or(PdfError::new("No startxref found."))?;
+            .ok_or(PdfError::from("No startxref found."))?;
 
         self.lexer.pos = position + START_XREF.len();
         if let Token::Integer(position) = self.lexer.next_token()? {
             self.lexer.pos = position as usize;
         } else {
-            return Err(PdfError::new("Invalid trailer position."));
+            return Err(PdfError::from("Invalid trailer position."));
         }
 
         let xref_table = self.parse_xref_table()?;
 
         if let Token::Keyword(kw) = self.lexer.next_token()? {
             if kw != "trailer" {
-                return Err(PdfError::new("Invalid trailer."));
+                return Err(PdfError::from("Invalid trailer."));
             }
         } else {
-            return Err(PdfError::new("Invalid trailer."));
+            return Err(PdfError::from("Invalid trailer."));
         }
 
         if let PdfObject::Dictionary(trailer) = self.parse_object()? {
             if let Some(size_obj) = trailer.dict.get("Size") {
                 if let PdfObject::Integer(size) = size_obj {
-                    if xref_table.iter().len() != (*size) as usize {
-                        return Err(PdfError::new("Invalid trailer."));
+                    if xref_table.len() != (*size) as usize {
+                        return Err(PdfError::from("Invalid trailer."));
                     }
                 } else {
-                    return Err(PdfError::new("Invalid trailer."));
+                    return Err(PdfError::from("Invalid trailer."));
                 }
             } else {
-                return Err(PdfError::new("Invalid trailer."));
+                return Err(PdfError::from("Invalid trailer."));
             }
 
             Ok((xref_table, trailer))
         } else {
-            Err(PdfError::new("Invalid trailer."))
+            Err(PdfError::from("Invalid trailer."))
         }
     }
 
     fn parse_xref_table(&mut self) -> Result<XrefTable, PdfError> {
         if let Token::Keyword(kw) = self.lexer.next_token()? {
             if kw != "xref" {
-                return Err(PdfError::new("Invalid xref table."));
+                return Err(PdfError::from("Invalid xref table."));
             }
         } else {
-            return Err(PdfError::new("Invalid xref table."));
+            return Err(PdfError::from("Invalid xref table."));
         }
 
         let section_start: u32;
@@ -155,13 +154,13 @@ impl<'a> PdfParser<'a> {
         if let Token::Integer(value) = self.lexer.next_token()? {
             section_start = value as u32;
         } else {
-            return Err(PdfError::new("Invalid xref table."));
+            return Err(PdfError::from("Invalid xref table."));
         }
 
         if let Token::Integer(value) = self.lexer.next_token()? {
             section_count = value as u32;
         } else {
-            return Err(PdfError::new("Invalid xref table."));
+            return Err(PdfError::from("Invalid xref table."));
         }
 
         let mut xref_table = XrefTable::new();
@@ -174,19 +173,19 @@ impl<'a> PdfParser<'a> {
             if let Token::Integer(value) = self.lexer.next_token()? {
                 position = value as u32;
             } else {
-                return Err(PdfError::new("Invalid xref table."));
+                return Err(PdfError::from("Invalid xref table."));
             }
 
             if let Token::Integer(value) = self.lexer.next_token()? {
                 generation = value as u32;
             } else {
-                return Err(PdfError::new("Invalid xref table."));
+                return Err(PdfError::from("Invalid xref table."));
             }
 
             if let Token::Keyword(value) = self.lexer.next_token()? {
                 keyword = value;
             } else {
-                return Err(PdfError::new("Invalid xref table."));
+                return Err(PdfError::from("Invalid xref table."));
             }
 
             xref_table.insert(
@@ -223,8 +222,8 @@ impl<'a> PdfParser<'a> {
         loop {
             let token = self.lexer.next_token()?;
             match token {
-                Token::Name(ref name) => {
-                    dict.insert(name.to_string(), self.parse_object()?);
+                Token::Name(name) => {
+                    dict.insert(name.into(), self.parse_object()?);
                 }
                 Token::DictClose => {
                     // Check for a stream
@@ -246,7 +245,7 @@ impl<'a> PdfParser<'a> {
                                             )));
                                         }
                                     }
-                                    return Err(PdfError::new("Invalid token."));
+                                    return Err(PdfError::from("Invalid token."));
                                 }
                                 _ => {}
                             }
@@ -256,7 +255,7 @@ impl<'a> PdfParser<'a> {
 
                     return Ok(PdfObject::Dictionary(dict));
                 }
-                _ => return Err(PdfError::new("Invalid token.")),
+                _ => return Err(PdfError::from("Invalid token.")),
             }
         }
     }

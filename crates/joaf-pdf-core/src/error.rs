@@ -5,31 +5,57 @@ pub struct PdfError {
     pub message: String,
 }
 
-impl PdfError {
-    pub fn new(message: &str) -> Self {
+impl From<&str> for PdfError {
+    fn from(message: &str) -> Self {
         Self {
             message: message.to_string(),
         }
     }
+}
 
-    pub fn from_io_error(error: std::io::Error) -> Self {
+impl From<String> for PdfError {
+    fn from(message: String) -> Self {
+        Self { message }
+    }
+}
+
+impl From<std::io::Error> for PdfError {
+    fn from(error: std::io::Error) -> Self {
         Self {
             message: format!("IO Error: {}", error.to_string()),
         }
     }
+}
 
-    pub fn from_utf8_error(error: std::str::Utf8Error) -> Self {
+impl From<std::str::Utf8Error> for PdfError {
+    fn from(error: std::str::Utf8Error) -> Self {
         Self {
             message: format!("Utf8 Error: {}", error.to_string()),
         }
     }
+}
 
-    pub fn from_from_utf8_error(error: std::string::FromUtf8Error) -> Self {
+impl From<std::string::FromUtf8Error> for PdfError {
+    fn from(error: std::string::FromUtf8Error) -> Self {
         Self {
             message: format!("Utf8 Error: {}", error.to_string()),
         }
     }
+}
 
+impl Error for PdfError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
+impl std::fmt::Display for PdfError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PDF error: {}", self.message)
+    }
+}
+
+impl PdfError {
     pub fn unexpected_eof(pos: usize) -> Self {
         Self {
             message: format!("Unexpected EOF at position {}", pos),
@@ -64,17 +90,5 @@ impl PdfError {
         Self {
             message: format!("Type mismatch: expected {}, got {}", expected, actual),
         }
-    }
-}
-
-impl Error for PdfError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        None
-    }
-}
-
-impl std::fmt::Display for PdfError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "PDF error: {}", self.message)
     }
 }

@@ -27,17 +27,17 @@ pub struct XrefEntry {
 
 pub type XrefTable = BTreeMap<u32, XrefEntry>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct PdfArray {
     pub items: Vec<PdfObject>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct PdfDictionary {
     pub dict: BTreeMap<String, PdfObject>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct PdfStream {
     pub entries: PdfDictionary,
     pub data: Vec<u8>,
@@ -58,7 +58,7 @@ pub enum PdfObject {
     IndirectObject(ObjectId, Box<PdfObject>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct PdfObjectsMap {
     pub map: BTreeMap<ObjectId, PdfObject>,
 }
