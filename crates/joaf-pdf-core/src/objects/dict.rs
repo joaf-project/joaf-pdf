@@ -1,12 +1,43 @@
-use std::{borrow::Borrow, collections::BTreeMap};
+use std::{borrow::Borrow, collections::BTreeMap, io::Write};
 
-use crate::PdfError;
+use crate::{Formatter, PdfError, PdfWriter, WritePdf};
 
 use super::*;
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct PdfDictionary<'a> {
     dict: BTreeMap<PdfName<'a>, PdfObject<'a>>,
+}
+
+impl<'a> WritePdf for PdfDictionary<'a> {
+    fn write_pdf<F: Formatter, W: Write>(
+        &self,
+        f: &mut PdfWriter<'_, W, F>,
+    ) -> std::io::Result<()> {
+        if self.dict.is_empty() {
+            return f.write_token(b"<<>>");
+        }
+
+        f.write_token(b"<<")?;
+        f.write_newline()?;
+        f.indent();
+        for (key, value) in self.dict.iter() {
+            f.write_indent()?;
+            key.write_pdf(f)?;
+            match value {
+                PdfObject::Name(_) => value.write_pdf(f)?,
+                _ => {
+                    value.write_pdf(f)?;
+                }
+            };
+            f.write_newline()?;
+        }
+        f.dedent();
+        f.write_indent()?;
+        f.write_token(b">>")?;
+
+        Ok(())
+    }
 }
 
 impl<'a> PdfDictionary<'a> {
@@ -37,5 +68,101 @@ impl<'a> PdfDictionary<'a> {
             Some(obj) => Ok(obj),
             None => Err(PdfError::missing_required_key(&key.to_string())),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{CompactFormatter, PrettyFormatter};
+    use indoc::indoc;
+
+    use super::*;
+
+    #[test]
+    fn test_pdf_dict_new() {
+        let dict = PdfDictionary::new();
+        assert_eq!(dict.dict.len(), 0);
+    }
+
+    #[test]
+    fn test_pdf_dict_insert() {
+        let mut dict = PdfDictionary::new();
+        let key = PdfName::TYPE;
+        let value = PdfObject::Name(PdfName::PAGE);
+        dict.insert(key, value);
+        assert_eq!(dict.dict.len(), 1);
+    }
+
+    #[test]
+    fn test_pdf_dict_get() {
+        let mut dict = PdfDictionary::new();
+        dict.insert(PdfName::TYPE, PdfObject::Name(PdfName::PAGE));
+        assert_eq!(
+            dict.get(&PdfName::TYPE),
+            Some(&PdfObject::Name(PdfName::PAGE))
+        );
+    }
+
+    #[test]
+    fn test_pdf_dict_get_required() {
+        let mut dict = PdfDictionary::new();
+        dict.insert(PdfName::TYPE, PdfObject::Name(PdfName::PAGE));
+        assert_eq!(
+            dict.get_required(&PdfName::TYPE),
+            Ok(&PdfObject::Name(PdfName::PAGE))
+        );
+    }
+
+    #[test]
+    fn test_pdf_dict_get_required_missing() {
+        let dict = PdfDictionary::new();
+        let key = PdfName::TYPE;
+        assert_eq!(
+            dict.get_required(&key),
+            Err(PdfError::missing_required_key("/Type"))
+        );
+    }
+
+    #[test]
+    fn test_pdf_dict_write_empty_pdf() -> std::io::Result<()> {
+        let dict = PdfDictionary::new();
+
+        let mut buffer = Vec::new();
+        let mut writer = PdfWriter::new(&mut buffer, CompactFormatter, false);
+        dict.write_pdf(&mut writer)?;
+        assert_eq!(String::from_utf8(buffer).unwrap(), "<<>>");
+
+        let mut buffer = Vec::new();
+        let mut writer = PdfWriter::new(&mut buffer, PrettyFormatter, false);
+        dict.write_pdf(&mut writer)?;
+        assert_eq!(String::from_utf8(buffer).unwrap(), "<<>>");
+        Ok(())
+    }
+
+    #[test]
+    fn test_pdf_dict_write_pdf() -> std::io::Result<()> {
+        let mut dict = PdfDictionary::new();
+        let key = PdfName::TYPE;
+        let value = PdfObject::Name(PdfName::PAGE);
+        dict.insert(key, value);
+
+        let mut buffer = Vec::new();
+        let mut writer = PdfWriter::new(&mut buffer, CompactFormatter, false);
+        dict.write_pdf(&mut writer)?;
+        assert_eq!(String::from_utf8(buffer).unwrap(), "<</Type/Page>>");
+
+        let mut buffer = Vec::new();
+        let mut writer = PdfWriter::new(&mut buffer, PrettyFormatter, false);
+        dict.write_pdf(&mut writer)?;
+        assert_eq!(
+            String::from_utf8(buffer).unwrap(),
+            indoc!(
+                "
+                <<
+                    /Type /Page
+                >>"
+            )
+        );
+        Ok(())
     }
 }

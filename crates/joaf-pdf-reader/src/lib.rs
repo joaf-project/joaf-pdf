@@ -21,7 +21,7 @@ impl<'a> PdfMemoryReader<'a> {
         let xref_table = self.parser.xref_table.clone();
 
         for (id, entry) in xref_table.iter() {
-            if let PdfObject::IndirectObject(object_id, object) =
+            if let PdfObject::IndirectObject { object_id, object } =
                 self.parser.parse_object_at(entry.byte_offset)?
             {
                 if *id == 0 && entry.generation == 65535 {
@@ -46,22 +46,22 @@ impl<'a> PdfMemoryReader<'a> {
         )?;
         doc.objects = objects;
 
-        let root_dict = doc.objects.get(&doc.trailer.root).to_dict()?;
+        let root_dict = doc.objects.get(&doc.trailer.root).as_dict()?;
 
-        if root_dict.get_required(&PdfName::TYPE)?.to_name()?.str != "Catalog" {
+        if root_dict.get_required(&PdfName::TYPE)?.as_name()? != &PdfName::CATALOG {
             return Err(PdfError::from("Root dictionary is not a catalog."));
         }
 
         let pages_dict = root_dict
             .get_required(&PdfName::PAGES)?
             .deref(&doc.objects)
-            .to_dict()?;
-        if pages_dict.get_required(&PdfName::TYPE)?.to_name()?.str != "Pages" {
+            .as_dict()?;
+        if pages_dict.get_required(&PdfName::TYPE)?.as_name()? != &PdfName::PAGES {
             return Err(PdfError::from("Pages dictionary is not a Pages."));
         }
 
-        let page_count = pages_dict.get_required(&PdfName::COUNT)?.to_integer()? as usize;
-        let page_ids = pages_dict.get_required(&PdfName::KIDS)?.to_array()?;
+        let page_count = pages_dict.get_required(&PdfName::COUNT)?.as_integer()? as usize;
+        let page_ids = pages_dict.get_required(&PdfName::KIDS)?.as_array()?;
         if page_count != page_ids.items.len() {
             return Err(PdfError::from(
                 "Page count does not match the number of kids.",
@@ -69,13 +69,13 @@ impl<'a> PdfMemoryReader<'a> {
         }
 
         for page_id_obj in page_ids.items.iter() {
-            let page_dict = page_id_obj.deref(&doc.objects).to_dict()?;
+            let page_dict = page_id_obj.deref(&doc.objects).as_dict()?;
             let page = Page::from_dict(page_dict)?;
             doc.catalog.pages.push(page);
         }
 
         if let Ok(outlines_id) = root_dict.get_required(&PdfName::OUTLINES) {
-            let outline_dict = outlines_id.deref(&doc.objects).to_dict()?;
+            let outline_dict = outlines_id.deref(&doc.objects).as_dict()?;
             println!("{:#?}", outline_dict);
         }
 

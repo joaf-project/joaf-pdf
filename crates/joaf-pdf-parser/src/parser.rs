@@ -41,7 +41,7 @@ impl<'a> PdfParser<'a> {
             .get(&id)
             .ok_or_else(|| PdfError::invalid_reference(id, generation))?;
 
-        if let PdfObject::IndirectObject(object_id, object) =
+        if let PdfObject::IndirectObject { object_id, object } =
             self.parse_object_at(entry.byte_offset)?
         {
             if object_id.id != id || object_id.generation != generation {
@@ -85,13 +85,13 @@ impl<'a> PdfParser<'a> {
                             }
                             "obj" => {
                                 let obj = self.parse_object()?;
-                                return Ok(PdfObject::IndirectObject(
-                                    ObjectId {
+                                return Ok(PdfObject::IndirectObject {
+                                    object_id: ObjectId {
                                         id: i as u32,
                                         generation: generation as u16,
                                     },
-                                    Box::new(obj),
-                                ));
+                                    object: Box::new(obj),
+                                });
                             }
                             _ => {}
                         }
@@ -254,7 +254,7 @@ impl<'a> PdfParser<'a> {
             match token {
                 Token::BracketClose => {
                     self.lexer.next_token()?;
-                    return Ok(PdfObject::Array(PdfArray::from_vec(array)));
+                    return Ok(PdfObject::Array(PdfArray::from(array)));
                 }
                 _ => {
                     array.push(self.parse_object()?);
@@ -409,7 +409,7 @@ mod tests {
     #[test]
     fn test_simple_array() {
         let token = parse_single_object(indoc!(b"[1 2 3]")).unwrap();
-        let expected = PdfObject::Array(PdfArray::from_vec(vec![
+        let expected = PdfObject::Array(PdfArray::from(vec![
             PdfObject::Integer(1),
             PdfObject::Integer(2),
             PdfObject::Integer(3),
@@ -420,7 +420,7 @@ mod tests {
     #[test]
     fn test_array_with_references() {
         let token = parse_single_object(indoc!(b"[1 0 R 2 0 R 3 0 R]")).unwrap();
-        let expected = PdfObject::Array(PdfArray::from_vec(vec![
+        let expected = PdfObject::Array(PdfArray::from(vec![
             PdfObject::Reference(ObjectId {
                 id: 1,
                 generation: 0,
@@ -447,7 +447,7 @@ mod tests {
             "
         ))
         .unwrap();
-        let expected = PdfObject::Array(PdfArray::from_vec(vec![
+        let expected = PdfObject::Array(PdfArray::from(vec![
             PdfObject::Reference(ObjectId {
                 id: 1,
                 generation: 0,
@@ -540,13 +540,13 @@ mod tests {
         let mut expected_obj = PdfDictionary::new();
         expected_obj.insert(PdfName::TYPE, PdfObject::Name(PdfName::PAGE));
 
-        let expected = PdfObject::IndirectObject(
-            ObjectId {
+        let expected = PdfObject::IndirectObject {
+            object_id: ObjectId {
                 id: 1,
                 generation: 0,
             },
-            Box::new(PdfObject::Dictionary(expected_obj)),
-        );
+            object: Box::new(PdfObject::Dictionary(expected_obj)),
+        };
 
         assert_eq!(token, expected);
     }
@@ -572,13 +572,13 @@ mod tests {
 
         let expected_obj = PdfStream::new(expected_dict, 53);
 
-        let expected = PdfObject::IndirectObject(
-            ObjectId {
+        let expected = PdfObject::IndirectObject {
+            object_id: ObjectId {
                 id: 1,
                 generation: 0,
             },
-            Box::new(PdfObject::Stream(expected_obj)),
-        );
+            object: Box::new(PdfObject::Stream(expected_obj)),
+        };
 
         assert_eq!(token, expected);
     }
@@ -605,13 +605,13 @@ mod tests {
 
         let expected_obj = PdfStream::new(expected_dict, 54);
 
-        let expected = PdfObject::IndirectObject(
-            ObjectId {
+        let expected = PdfObject::IndirectObject {
+            object_id: ObjectId {
                 id: 1,
                 generation: 0,
             },
-            Box::new(PdfObject::Stream(expected_obj)),
-        );
+            object: Box::new(PdfObject::Stream(expected_obj)),
+        };
 
         assert_eq!(token, expected);
     }
@@ -647,19 +647,19 @@ mod tests {
         expected_dict.insert(PdfName::LENGTH, PdfObject::Integer(534));
         expected_dict.insert(
             PdfName::FILTER,
-            PdfObject::Array(PdfArray::from_vec(vec![
-                PdfObject::Name(PdfName::from("ASCII85Decode")),
-                PdfObject::Name(PdfName::from("LZWDecode")),
+            PdfObject::Array(PdfArray::from(vec![
+                PdfObject::Name(PdfName::ASCII85_DECODE),
+                PdfObject::Name(PdfName::LZW_DECODE),
             ])),
         );
 
-        let expected = PdfObject::IndirectObject(
-            ObjectId {
+        let expected = PdfObject::IndirectObject {
+            object_id: ObjectId {
                 id: 1,
                 generation: 0,
             },
-            Box::new(PdfObject::Stream(PdfStream::new(expected_dict, 84))),
-        );
+            object: Box::new(PdfObject::Stream(PdfStream::new(expected_dict, 84))),
+        };
 
         assert_eq!(token, expected);
     }

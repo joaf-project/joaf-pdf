@@ -1,7 +1,10 @@
 use std::{
     borrow::{Borrow, Cow},
     fmt::Display,
+    io::Write,
 };
+
+use crate::{Formatter, PdfWriter, WritePdf};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PdfName<'a> {
@@ -23,6 +26,15 @@ impl<'a> Display for PdfName<'a> {
 impl<'a> From<&'a str> for PdfName<'a> {
     fn from(s: &'a str) -> Self {
         Self::from(Cow::Borrowed(s))
+    }
+}
+
+impl<'a> WritePdf for PdfName<'a> {
+    fn write_pdf<F: Formatter, W: Write>(
+        &self,
+        w: &mut PdfWriter<'_, W, F>,
+    ) -> std::io::Result<()> {
+        w.write_token(&format!("/{}", self.str).as_bytes())
     }
 }
 
@@ -194,4 +206,32 @@ define_pdf_names! {
     (XHEIGHT, "XHeight"),
     (XREF, "XRef"),
     (ZAPF_DINGBATS, "ZapfDingbats"),
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{CompactFormatter, PdfObject, PrettyFormatter};
+
+    use super::*;
+
+    #[test]
+    fn test_pdf_name_from_str() {
+        let name = PdfName::from("Test");
+        assert_eq!(name.str, "Test");
+    }
+
+    #[test]
+    fn test_pdf_name_writet_pdf() {
+        let name = PdfObject::Name(PdfName::TYPE);
+
+        let mut writer = Vec::new();
+        let mut pdf_writer = PdfWriter::new(&mut writer, CompactFormatter, false);
+        name.write_pdf(&mut pdf_writer).unwrap();
+        assert_eq!(String::from_utf8(writer).unwrap(), "/Type");
+
+        let mut writer = Vec::new();
+        let mut pdf_writer = PdfWriter::new(&mut writer, PrettyFormatter, false);
+        name.write_pdf(&mut pdf_writer).unwrap();
+        assert_eq!(String::from_utf8(writer).unwrap(), "/Type");
+    }
 }

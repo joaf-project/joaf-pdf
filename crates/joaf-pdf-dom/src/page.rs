@@ -15,30 +15,30 @@ pub struct Page<'a> {
 
 impl Rect {
     pub fn from_obj(obj: &PdfObject) -> Result<Self, PdfError> {
-        let arr = obj.to_array()?;
+        let arr = obj.as_array()?;
 
         if arr.items.len() != 4 {
             return Err(PdfError::from("MediaBox is not an array of 4 elements."));
         }
 
         Ok(Self {
-            x: arr.items[0].to_integer()? as u32,
-            y: arr.items[1].to_integer()? as u32,
-            width: arr.items[2].to_integer()? as u32,
-            height: arr.items[3].to_integer()? as u32,
+            x: arr.items[0].as_integer()? as u32,
+            y: arr.items[1].as_integer()? as u32,
+            width: arr.items[2].as_integer()? as u32,
+            height: arr.items[3].as_integer()? as u32,
         })
     }
 }
 
 impl<'a> Page<'a> {
     pub fn from_dict(dict: &PdfDictionary<'a>) -> Result<Self, PdfError> {
-        if dict.get_required(&PdfName::TYPE)?.to_name()?.str != "Page" {
+        if dict.get_required(&PdfName::TYPE)?.as_name()?.str != "Page" {
             return Err(PdfError::from("Type is not a Page."));
         }
 
         let media_box = Rect::from_obj(dict.get_required(&PdfName::MEDIA_BOX)?)?;
         let contents = dict.get_required(&PdfName::CONTENTS)?.clone();
-        let resources = dict.get_required(&PdfName::RESOURCES)?.to_dict()?.clone();
+        let resources = dict.get_required(&PdfName::RESOURCES)?.as_dict()?.clone();
 
         Ok(Self {
             media_box,

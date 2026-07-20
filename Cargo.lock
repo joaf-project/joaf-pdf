@@ -42,6 +42,9 @@ version = "0.1.0"
 [[package]]
 name = "joaf-pdf-core"
 version = "0.1.0"
+dependencies = [
+ "indoc",
+]
 
 [[package]]
 name = "joaf-pdf-dom"
