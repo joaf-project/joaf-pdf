@@ -127,15 +127,8 @@ impl<'a> WritePdf for PdfObject<'a> {
                     w.write_token(b"false")
                 }
             }
-            PdfObject::Integer(i) => w.write_token(i.to_string().as_bytes()),
-            PdfObject::Real(r) => {
-                let s = if r.fract() == 0.0 {
-                    format!("{:.1}", r) // Force .0 for whole numbers
-                } else {
-                    format!("{}", r) // Keep full precision for others
-                };
-                w.write_token(s.as_bytes())
-            }
+            PdfObject::Integer(i) => w.write_integer(*i),
+            PdfObject::Real(r) => w.write_real(*r),
             PdfObject::Name(name) => name.write_pdf(w),
             PdfObject::Array(arr) => arr.write_pdf(w),
             PdfObject::Reference(id) => id.write_pdf(w),
@@ -143,9 +136,10 @@ impl<'a> WritePdf for PdfObject<'a> {
             PdfObject::Dictionary(dict) => dict.write_pdf(w),
             PdfObject::Stream(stream) => stream.write_pdf(w),
             PdfObject::IndirectObject { object_id, object } => {
-                w.write_token(
-                    &format!("\n{} {} obj\n", object_id.id, object_id.generation).as_bytes(),
-                )?;
+                w.write_whitespace(b"\n")?;
+                w.write_integer(object_id.id as i64)?;
+                w.write_integer(object_id.generation as i64)?;
+                w.write_token(b"obj\n")?;
                 w.indent();
                 w.write_indent()?;
                 object.write_pdf(w)?;

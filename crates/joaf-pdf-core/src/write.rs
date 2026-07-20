@@ -180,6 +180,30 @@ impl<'a, W: Write, F: Formatter> PdfWriter<'a, W, F> {
         Ok(())
     }
 
+    pub fn write_integer(&mut self, i: i64) -> std::io::Result<()> {
+        if self.state == WriterState::Regular {
+            self.writer.write_all(b" ")?;
+        }
+        write!(self.writer, "{}", i)?;
+        self.state = WriterState::Regular;
+        Ok(())
+    }
+
+    pub fn write_real(&mut self, f: f64) -> std::io::Result<()> {
+        if self.state == WriterState::Regular {
+            self.writer.write_all(b" ")?;
+        }
+
+        if f.fract() == 0.0 {
+            write!(self.writer, "{:.1}", f)?; // Force .0 for whole numbers
+        } else {
+            write!(self.writer, "{}", f)?; // Keep full precision for others
+        };
+
+        self.state = WriterState::Regular;
+        Ok(())
+    }
+
     #[inline(always)]
     pub fn write_indent(&mut self) -> std::io::Result<()> {
         self.formatter

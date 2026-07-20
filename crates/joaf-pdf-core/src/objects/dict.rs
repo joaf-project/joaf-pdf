@@ -12,29 +12,24 @@ pub struct PdfDictionary<'a> {
 impl<'a> WritePdf for PdfDictionary<'a> {
     fn write_pdf<F: Formatter, W: Write>(
         &self,
-        f: &mut PdfWriter<'_, W, F>,
+        w: &mut PdfWriter<'_, W, F>,
     ) -> std::io::Result<()> {
         if self.dict.is_empty() {
-            return f.write_token(b"<<>>");
+            return w.write_token(b"<<>>");
         }
 
-        f.write_token(b"<<")?;
-        f.write_newline()?;
-        f.indent();
+        w.write_token(b"<<")?;
+        w.write_newline()?;
+        w.indent();
         for (key, value) in self.dict.iter() {
-            f.write_indent()?;
-            key.write_pdf(f)?;
-            match value {
-                PdfObject::Name(_) => value.write_pdf(f)?,
-                _ => {
-                    value.write_pdf(f)?;
-                }
-            };
-            f.write_newline()?;
+            w.write_indent()?;
+            key.write_pdf(w)?;
+            value.write_pdf(w)?;
+            w.write_newline()?;
         }
-        f.dedent();
-        f.write_indent()?;
-        f.write_token(b">>")?;
+        w.dedent();
+        w.write_indent()?;
+        w.write_token(b">>")?;
 
         Ok(())
     }

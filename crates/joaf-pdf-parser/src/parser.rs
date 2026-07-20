@@ -237,8 +237,8 @@ impl<'a> PdfParser<'a> {
             xref_table.insert(
                 section_start + section_index,
                 XrefEntry {
-                    byte_offset: position as usize,
-                    generation: generation as u16,
+                    byte_offset: position,
+                    generation: generation,
                     in_use: keyword == "n",
                 },
             );

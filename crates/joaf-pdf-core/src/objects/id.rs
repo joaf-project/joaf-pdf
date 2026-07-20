@@ -19,7 +19,9 @@ impl WritePdf for ObjectId {
         &self,
         w: &mut PdfWriter<'_, W, F>,
     ) -> std::io::Result<()> {
-        w.write_token(&format!("{} {} R", self.id, self.generation).as_bytes())
+        w.write_integer(self.id as i64)?;
+        w.write_integer(self.generation as i64)?;
+        w.write_token(b"R")
     }
 }
 
