@@ -1,5 +1,5 @@
 use joaf_pdf_core::{PdfError, PdfName, PdfObject, PdfObjectsMap};
-use joaf_pdf_dom::{Document, Page};
+use joaf_pdf_dom::{Catalog, Document, Page, PageTree, Rect};
 use joaf_pdf_parser::PdfParser;
 
 pub struct PdfMemoryReader<'a> {
@@ -39,45 +39,70 @@ impl<'a> PdfMemoryReader<'a> {
             }
         }
 
-        let mut doc = Document::try_new(
-            self.parser.version.clone(),
-            &self.parser.trailer_dict,
-            xref_table,
-        )?;
-        doc.objects = objects;
+        let catalog_dict = self
+            .parser
+            .trailer_dict
+            .get_required(&PdfName::Root)?
+            .deref(&objects)
+            .as_dict()?;
 
-        let root_dict = doc.objects.get(&doc.trailer.root).as_dict()?;
-
-        if root_dict.get_required(&PdfName::TYPE)?.as_name()? != &PdfName::CATALOG {
+        if catalog_dict.get_required(&PdfName::Type)?.as_name()? != &PdfName::Catalog {
             return Err(PdfError::from("Root dictionary is not a catalog."));
         }
 
-        let pages_dict = root_dict
-            .get_required(&PdfName::PAGES)?
-            .deref(&doc.objects)
+        let page_tree_dict = catalog_dict
+            .get_required(&PdfName::Pages)?
+            .deref(&objects)
             .as_dict()?;
-        if pages_dict.get_required(&PdfName::TYPE)?.as_name()? != &PdfName::PAGES {
+
+        if page_tree_dict.get_required(&PdfName::Type)?.as_name()? != &PdfName::Pages {
             return Err(PdfError::from("Pages dictionary is not a Pages."));
         }
 
-        let page_count = pages_dict.get_required(&PdfName::COUNT)?.as_integer()? as usize;
-        let page_ids = pages_dict.get_required(&PdfName::KIDS)?.as_array()?;
+        let page_count = page_tree_dict.get_required(&PdfName::Count)?.as_integer()? as usize;
+        let page_ids = page_tree_dict.get_required(&PdfName::Kids)?.as_array()?;
         if page_count != page_ids.items.len() {
             return Err(PdfError::from(
                 "Page count does not match the number of kids.",
             ));
         }
 
-        for page_id_obj in page_ids.items.iter() {
-            let page_dict = page_id_obj.deref(&doc.objects).as_dict()?;
-            let page = Page::from_dict(page_dict)?;
-            doc.catalog.pages.push(page);
+        let root_page_tree = PageTree::empty();
+
+        let mut catalog = Catalog::new();
+
+        for page_id in page_ids.items.iter() {
+            let page_dict = page_id.deref(&objects).as_dict()?;
+
+            match page_dict.get_required(&PdfName::Type)?.as_name()? {
+                PdfName::Page => {}
+                PdfName::PageTree => {}
+                _ => {}
+            }
+
+            let resources_obj = page_dict.get_required(&PdfName::Resources)?.deref(&objects);
+            let resources_dict = resources_obj.as_dict()?;
+            let contents_obj = page_dict.get_required(&PdfName::Contents)?.deref(&objects);
+
+            let page = Page::new(
+                &root_page_tree,
+                Rect::from_obj(page_dict.get_required(&PdfName::MediaBox)?)?,
+            );
+
+            catalog.pages.push(page);
         }
 
-        if let Ok(outlines_id) = root_dict.get_required(&PdfName::OUTLINES) {
-            let outline_dict = outlines_id.deref(&doc.objects).as_dict()?;
+        if let Ok(outlines_id) = catalog_dict.get_required(&PdfName::Outlines) {
+            let outline_dict = outlines_id.deref(&objects).as_dict()?;
             println!("{:#?}", outline_dict);
         }
+
+        let mut doc = Document::try_new(
+            self.parser.version.clone(),
+            &self.parser.trailer_dict,
+            xref_table,
+        )?;
+        doc.objects = objects;
 
         Ok(doc)
     }
@@ -101,8 +126,11 @@ mod tests {
         let document = pdf_reader.read()?;
 
         println!("PDF version: {}", document.version);
-        for (key, value) in document.xref_table.iter() {
-            println!("Xref entry: {} = {:#?}", key, value);
+
+        println!("xref");
+        println!("0 {}", document.xref_table.len());
+        for (_, value) in document.xref_table.iter() {
+            println!("{}", value);
         }
 
         assert!(document.catalog.pages.len() == 1);
@@ -120,8 +148,11 @@ mod tests {
         let document = pdf_reader.read()?;
 
         println!("PDF version: {}", document.version);
-        for (key, value) in document.xref_table.iter() {
-            println!("Xref entry: {} = {:#?}", key, value);
+
+        println!("xref");
+        println!("0 {}", document.xref_table.len());
+        for (_, value) in document.xref_table.iter() {
+            println!("{}", value);
         }
 
         assert!(document.catalog.pages.len() == 1);

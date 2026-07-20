@@ -150,7 +150,7 @@ impl<'a> PdfParser<'a> {
         }
 
         if let PdfObject::Dictionary(trailer) = self.parse_object()? {
-            if let Ok(size_obj) = trailer.get_required(&PdfName::SIZE) {
+            if let Ok(size_obj) = trailer.get_required(&PdfName::Size) {
                 if let PdfObject::Integer(size) = size_obj {
                     if xref_table.len() != (*size) as usize {
                         return Err(PdfError::from("Invalid trailer."));
@@ -518,7 +518,7 @@ mod tests {
         .unwrap();
 
         let mut expected = PdfDictionary::new();
-        expected.insert(PdfName::TYPE, PdfObject::Name(PdfName::PAGE));
+        expected.insert(PdfName::Type, PdfObject::Name(PdfName::Page));
 
         assert_eq!(token, PdfObject::Dictionary(expected));
 
@@ -533,7 +533,7 @@ mod tests {
         .unwrap();
 
         let mut expected = PdfDictionary::new();
-        expected.insert(PdfName::COUNT, PdfObject::Integer(1));
+        expected.insert(PdfName::Count, PdfObject::Integer(1));
 
         assert_eq!(token, PdfObject::Dictionary(expected));
     }
@@ -553,7 +553,7 @@ mod tests {
         .unwrap();
 
         let mut expected_obj = PdfDictionary::new();
-        expected_obj.insert(PdfName::TYPE, PdfObject::Name(PdfName::PAGE));
+        expected_obj.insert(PdfName::Type, PdfObject::Name(PdfName::Page));
 
         let expected = PdfObject::IndirectObject {
             object_id: ObjectId {
@@ -583,7 +583,7 @@ mod tests {
         .unwrap();
 
         let mut expected_dict = PdfDictionary::new();
-        expected_dict.insert(PdfName::LENGTH, PdfObject::Integer(0));
+        expected_dict.insert(PdfName::Length, PdfObject::Integer(0));
 
         let expected_obj = PdfStream::new(expected_dict);
 
@@ -616,7 +616,7 @@ mod tests {
         .unwrap();
 
         let mut expected_dict = PdfDictionary::new();
-        expected_dict.insert(PdfName::LENGTH, PdfObject::Integer(13));
+        expected_dict.insert(PdfName::Length, PdfObject::Integer(13));
 
         let expected_obj = PdfStream::new(expected_dict).with(b"simple stream".as_ref().into());
 
@@ -691,14 +691,14 @@ mod tests {
 
         let mut expected_dict = PdfDictionary::new();
         expected_dict.insert(
-            PdfName::LENGTH,
+            PdfName::Length,
             PdfObject::Integer(expected_bytes.len() as i64),
         );
         expected_dict.insert(
-            PdfName::FILTER,
+            PdfName::Filter,
             PdfObject::Array(PdfArray::from(vec![
-                PdfObject::Name(PdfName::ASCII85_DECODE),
-                PdfObject::Name(PdfName::LZW_DECODE),
+                PdfObject::Name(PdfName::ASCII85Decode),
+                PdfObject::Name(PdfName::LZWDecode),
             ])),
         );
 
@@ -788,9 +788,9 @@ mod tests {
         assert_eq!(xref_table, expected_xref_table);
 
         let mut expected_trailer = PdfDictionary::new();
-        expected_trailer.insert(PdfName::SIZE, PdfObject::Integer(5));
+        expected_trailer.insert(PdfName::Size, PdfObject::Integer(5));
         expected_trailer.insert(
-            PdfName::ROOT,
+            PdfName::Root,
             PdfObject::Reference(ObjectId {
                 id: 1,
                 generation: 0,

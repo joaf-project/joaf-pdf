@@ -138,14 +138,14 @@ mod tests {
     #[test]
     fn test_pdf_array_write_pdf_names() {
         let arr = PdfArray::from(vec![
-            PdfObject::Name(PdfName::TYPE),
-            PdfObject::Name(PdfName::PAGE),
-            PdfObject::Name(PdfName::TYPE),
-            PdfObject::Name(PdfName::PAGE),
-            PdfObject::Name(PdfName::TYPE),
-            PdfObject::Name(PdfName::PAGE),
-            PdfObject::Name(PdfName::TYPE),
-            PdfObject::Name(PdfName::PAGE),
+            PdfObject::Name(PdfName::Type),
+            PdfObject::Name(PdfName::Page),
+            PdfObject::Name(PdfName::Type),
+            PdfObject::Name(PdfName::Page),
+            PdfObject::Name(PdfName::Type),
+            PdfObject::Name(PdfName::Page),
+            PdfObject::Name(PdfName::Type),
+            PdfObject::Name(PdfName::Page),
         ]);
 
         let mut writer = Vec::new();

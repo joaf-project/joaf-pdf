@@ -273,13 +273,13 @@ mod tests {
         ]);
 
         let mut dict = PdfDictionary::new();
-        dict.insert(PdfName::TYPE, PdfObject::Name(PdfName::PAGES));
+        dict.insert(PdfName::Type, PdfObject::Name(PdfName::Pages));
         dict.insert(
-            PdfName::NAME,
+            PdfName::Name,
             PdfObject::String(PdfString::from(b"Joaf PDF".as_ref())),
         );
-        dict.insert(PdfName::COUNT, PdfObject::Integer(3));
-        dict.insert(PdfName::KIDS, PdfObject::Array(kids));
+        dict.insert(PdfName::Count, PdfObject::Integer(3));
+        dict.insert(PdfName::Kids, PdfObject::Array(kids));
 
         let obj = PdfObject::IndirectObject {
             object_id: ObjectId {
@@ -330,7 +330,7 @@ mod tests {
     #[test]
     fn test_pdf_object_write_indirect_stream() {
         let mut dict = PdfDictionary::new();
-        dict.insert(PdfName::LENGTH, PdfObject::Integer(0));
+        dict.insert(PdfName::Length, PdfObject::Integer(0));
 
         let obj = PdfObject::IndirectObject {
             object_id: ObjectId {

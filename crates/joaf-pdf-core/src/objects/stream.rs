@@ -70,7 +70,7 @@ impl<'a> PdfStream<'a> {
     }
 
     pub fn length(&self) -> Option<usize> {
-        match self.entries.get_required(&PdfName::LENGTH) {
+        match self.entries.get_required(&PdfName::Length) {
             Ok(PdfObject::Integer(length)) => Some(*length as usize),
             _ => None,
         }
@@ -98,7 +98,7 @@ mod tests {
     #[test]
     fn test_pdf_stream_write_empty() {
         let mut dict = PdfDictionary::new();
-        dict.insert(PdfName::LENGTH, PdfObject::Integer(0));
+        dict.insert(PdfName::Length, PdfObject::Integer(0));
         let stream = PdfObject::Stream(PdfStream::new(dict));
 
         let mut writer = Vec::new();
@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn test_pdf_stream_write_with_data() {
         let mut dict = PdfDictionary::new();
-        dict.insert(PdfName::LENGTH, PdfObject::Integer(5));
+        dict.insert(PdfName::Length, PdfObject::Integer(5));
         let stream = PdfObject::Stream(PdfStream::new(dict).with(b"Hello".as_ref().into()));
 
         let mut writer = Vec::new();
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn test_pdf_stream_write_with_data_ending_with_new_line() {
         let mut dict = PdfDictionary::new();
-        dict.insert(PdfName::LENGTH, PdfObject::Integer(6));
+        dict.insert(PdfName::Length, PdfObject::Integer(6));
         let stream = PdfObject::Stream(PdfStream::new(dict).with(b"Hello\n".as_ref().into()));
 
         let mut writer = Vec::new();

@@ -82,8 +82,8 @@ mod tests {
     #[test]
     fn test_pdf_dict_insert() {
         let mut dict = PdfDictionary::new();
-        let key = PdfName::TYPE;
-        let value = PdfObject::Name(PdfName::PAGE);
+        let key = PdfName::Type;
+        let value = PdfObject::Name(PdfName::Page);
         dict.insert(key, value);
         assert_eq!(dict.dict.len(), 1);
     }
@@ -91,27 +91,27 @@ mod tests {
     #[test]
     fn test_pdf_dict_get() {
         let mut dict = PdfDictionary::new();
-        dict.insert(PdfName::TYPE, PdfObject::Name(PdfName::PAGE));
+        dict.insert(PdfName::Type, PdfObject::Name(PdfName::Page));
         assert_eq!(
-            dict.get(&PdfName::TYPE),
-            Some(&PdfObject::Name(PdfName::PAGE))
+            dict.get(&PdfName::Type),
+            Some(&PdfObject::Name(PdfName::Page))
         );
     }
 
     #[test]
     fn test_pdf_dict_get_required() {
         let mut dict = PdfDictionary::new();
-        dict.insert(PdfName::TYPE, PdfObject::Name(PdfName::PAGE));
+        dict.insert(PdfName::Type, PdfObject::Name(PdfName::Page));
         assert_eq!(
-            dict.get_required(&PdfName::TYPE),
-            Ok(&PdfObject::Name(PdfName::PAGE))
+            dict.get_required(&PdfName::Type),
+            Ok(&PdfObject::Name(PdfName::Page))
         );
     }
 
     #[test]
     fn test_pdf_dict_get_required_missing() {
         let dict = PdfDictionary::new();
-        let key = PdfName::TYPE;
+        let key = PdfName::Type;
         assert_eq!(
             dict.get_required(&key),
             Err(PdfError::missing_required_key("/Type"))
@@ -137,8 +137,8 @@ mod tests {
     #[test]
     fn test_pdf_dict_write_pdf() -> std::io::Result<()> {
         let mut dict = PdfDictionary::new();
-        let key = PdfName::TYPE;
-        let value = PdfObject::Name(PdfName::PAGE);
+        let key = PdfName::Type;
+        let value = PdfObject::Name(PdfName::Page);
         dict.insert(key, value);
 
         let mut buffer = Vec::new();
