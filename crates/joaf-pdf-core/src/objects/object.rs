@@ -337,7 +337,7 @@ mod tests {
                 id: 2,
                 generation: 100,
             },
-            object: PdfObject::Stream(PdfStream::new(dict, 0)).into(),
+            object: PdfObject::Stream(PdfStream::new(dict)).into(),
         };
 
         let mut writer = Vec::new();

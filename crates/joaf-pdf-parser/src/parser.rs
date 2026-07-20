@@ -280,10 +280,25 @@ impl<'a> PdfParser<'a> {
                                 "stream" => {
                                     self.lexer.next_token()?; // discard "stream" token
                                     self.lexer.skip_optional_newline()?;
-                                    return Ok(PdfObject::Stream(PdfStream::new(
-                                        dict,
-                                        self.lexer.pos,
-                                    )));
+                                    let stream_pos = self.lexer.pos;
+                                    let mut stream = PdfStream::new(dict).with(stream_pos.into());
+                                    // Load small streams directly into memory
+                                    if let Some(len) = stream.length()
+                                        && len < 1024
+                                    {
+                                        stream.load_from_buffer(self.lexer.input)?;
+                                        self.lexer.pos += len;
+                                        if let Token::Keyword(kw) = self.lexer.next_token()? {
+                                            if kw == "endstream" {
+                                                return Ok(PdfObject::Stream(stream));
+                                            }
+                                        }
+
+                                        return Err(PdfError::from("Invalid stream."));
+                                    }
+
+                                    // Large streams are lazy loaded
+                                    return Ok(PdfObject::Stream(stream));
                                 }
                                 _ => {}
                             }
@@ -570,7 +585,7 @@ mod tests {
         let mut expected_dict = PdfDictionary::new();
         expected_dict.insert(PdfName::LENGTH, PdfObject::Integer(0));
 
-        let expected_obj = PdfStream::new(expected_dict, 53);
+        let expected_obj = PdfStream::new(expected_dict);
 
         let expected = PdfObject::IndirectObject {
             object_id: ObjectId {
@@ -603,7 +618,7 @@ mod tests {
         let mut expected_dict = PdfDictionary::new();
         expected_dict.insert(PdfName::LENGTH, PdfObject::Integer(13));
 
-        let expected_obj = PdfStream::new(expected_dict, 54);
+        let expected_obj = PdfStream::new(expected_dict).with(b"simple stream".as_ref().into());
 
         let expected = PdfObject::IndirectObject {
             object_id: ObjectId {
@@ -643,8 +658,42 @@ mod tests {
         ))
         .unwrap();
 
+        let expected_bytes = indoc!(
+            br##"
+                J..)6T`?p&<!J9%_[umg"B7/Z7KNXbN'S+,*Q/&"OLT'F
+                LIDK#!n`$"<Atdi`\Vn%b%)&'cA*VnK\CJY(sF>c!Jnl@
+                RM]WM;jjH6Gnc75idkL5]+cPZKEBPWdR>FF(kj1_R%W_d
+                &/jS!;iuad7h?[L-F$+]]0A3Ck*$I0KZ?;<)CJtqi65Xb
+                Vc3\n5ua:Q/=0$W<#N3U;H,MQKqfg1?:lUpR;6oN[C2E4
+                ZNr8Udn.'p+?#X+1>0Kuk$bCDF/(3fL5]Oq)^kJZ!C2H1
+                'TO]Rl?Q:&'<5&iP!$Rq;BXRecDN[IJB`,)o8XJOSJ9sD
+                S]hQ;Rj@!ND)bD_q&C\g:inYC%)&u#:u,M6Bm%IY!Kb1+
+                ":aAa'S`ViJglLb8<W9k6Yl\\0McJQkDeLWdPN?9A'jX*
+                al>iG1p&i;eVoK&juJHs9%;Xomop"5KatWRT"JQ#qYuL,
+                JD?M$0QP)lKn06l1apKDC@\qJ4B!!(5m+j.7F790m(Vj8
+                8l8Q:_CZ(Gm1%X\N1&u!FKHMB~>
+            "##
+        );
+
+        if let PdfObject::IndirectObject { object_id, object } = &token {
+            assert_eq!(
+                object_id,
+                &ObjectId {
+                    id: 1,
+                    generation: 0
+                }
+            );
+            let stream: &PdfStream = object.as_stream().unwrap();
+            assert_eq!(stream.length(), Some(expected_bytes.len()));
+        } else {
+            assert!(false, "Not a stream");
+        }
+
         let mut expected_dict = PdfDictionary::new();
-        expected_dict.insert(PdfName::LENGTH, PdfObject::Integer(534));
+        expected_dict.insert(
+            PdfName::LENGTH,
+            PdfObject::Integer(expected_bytes.len() as i64),
+        );
         expected_dict.insert(
             PdfName::FILTER,
             PdfObject::Array(PdfArray::from(vec![
@@ -658,7 +707,9 @@ mod tests {
                 id: 1,
                 generation: 0,
             },
-            object: Box::new(PdfObject::Stream(PdfStream::new(expected_dict, 84))),
+            object: Box::new(PdfObject::Stream(
+                PdfStream::new(expected_dict).with(expected_bytes.as_ref().into()),
+            )),
         };
 
         assert_eq!(token, expected);
